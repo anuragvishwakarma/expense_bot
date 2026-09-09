@@ -5,6 +5,7 @@ import { UserService } from './services/userService';
 import { initSupabase } from './db';
 import { TransactionService } from './services/transactionService';
 import { ReportService } from './services/reportService';
+import { BudgetService } from './services/budgetService';
 
 dotenv.config();
 
@@ -16,6 +17,7 @@ const supabase = SupabaseClient(
 const userService = new UserService();
 const transactionService = new TransactionService();
 const reportService = new ReportService();
+const budgetService = new BudgetService();
 
 // Initialize Supabase in service
 initSupabase(process.env.SUPABASE_URL || '', process.env.SUPABASE_ANON_KEY || '');
@@ -251,6 +253,97 @@ bot.command('export', async (ctx) => {
   } catch (error) {
     console.error('Export error:', error);
     ctx.reply(`❌ Error exporting data: ${error.message}`);
+  }
+});
+
+// Set budget command
+bot.command('budget', async (ctx) => {
+  if (!ctx.session.user) {
+    return ctx.reply('Please start the bot first with /start');
+  }
+
+  const args = ctx.message.text.split(' ');
+  if (args.length < 4) {
+    return ctx.reply('Usage: /budget <category> <amount> <month> <year>\nExample: /budget Food 5000 9 2026');
+  }
+
+  const category = args[1];
+  const amount = parseFloat(args[2]);
+  const month = parseInt(args[3]);
+  const year = parseInt(args[4] || new Date().getFullYear().toString());
+
+  if (isNaN(amount) || amount <= 0) {
+    return ctx.reply('Please provide a valid budget amount');
+  }
+  if (isNaN(month) || month < 1 || month > 12) {
+    return ctx.reply('Please provide a valid month (1-12)');
+  }
+  if (isNaN(year) || year < 2020) {
+    return ctx.reply('Please provide a valid year');
+  }
+
+  try {
+    const budget = await budgetService.setBudget(
+      ctx.session.user.id,
+      category,
+      amount,
+      month,
+      year
+    );
+    
+    const monthName = new Date(year, month - 1).toLocaleString('default', { month: 'long' });
+    ctx.reply(`✅ Budget set for ${category}!
+${monthName} ${year}: ₹${amount.toFixed(2)}`);
+  } catch (error) {
+    console.error('Set budget error:', error);
+    ctx.reply(`❌ Error setting budget: ${error.message}`);
+  }
+});
+
+// Budget status command
+bot.command('budgetstatus', async (ctx) => {
+  if (!ctx.session.user) {
+    return ctx.reply('Please start the bot first with /start');
+  }
+
+  const args = ctx.message.text.split(' ');
+  let month = new Date().getMonth() + 1;
+  let year = new Date().getFullYear();
+  
+  if (args.length >= 2) {
+    month = parseInt(args[1]);
+    year = parseInt(args[2] || year.toString());
+    
+    if (isNaN(month) || month < 1 || month > 12) {
+      return ctx.reply('Please provide a valid month (1-12)');
+    }
+    if (isNaN(year) || year < 2020) {
+      return ctx.reply('Please provide a valid year');
+    }
+  }
+
+  try {
+    const status = await budgetService.getBudgetStatus(ctx.session.user.id, month, year);
+    
+    const monthName = new Date(year, month - 1).toLocaleString('default', { month: 'long' });
+    let message = `💰 *Budget Status for ${monthName} ${year}*`\n\n`;
+    
+    if (status.length === 0) {
+      message += 'No budgets set for this month. Use /budget to set budgets.\n';
+    } else {
+      status.forEach(budget => {
+        const statusIcon = budget.overBudget ? '🔴' : budget.percentage > 80 ? '🟡' : '🟢';
+        message += `${statusIcon} ${budget.icon} ${budget.category}\n`;
+        message += `   Budgeted: ₹${budget.budgeted.toFixed(2)}\n`;
+        message += `   Spent: ₹${budget.spent.toFixed(2)}\n`;
+        message += `   Remaining: ₹${budget.remaining.toFixed(2)} (${budget.percentage.toFixed(1)}% used)\n\n`;
+      });
+    }
+    
+    ctx.reply(message, { parse_mode: 'Markdown' });
+  } catch (error) {
+    console.error('Budget status error:', error);
+    ctx.reply(`❌ Error getting budget status: ${error.message}`);
   }
 });
 

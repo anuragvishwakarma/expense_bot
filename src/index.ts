@@ -6,6 +6,7 @@ import { initSupabase } from './db';
 import { TransactionService } from './services/transactionService';
 import { ReportService } from './services/reportService';
 import { BudgetService } from './services/budgetService';
+import { HELP_MESSAGE, ERROR_MESSAGES } from './utils/helpMessages';
 
 dotenv.config();
 
@@ -45,13 +46,18 @@ bot.use(async (ctx, next) => {
 // Start command
 bot.start((ctx) => ctx.reply('Welcome to Expense Tracker Bot! Use /help to see available commands.'));
 
+// Help command
+bot.command('help', (ctx) => {
+  ctx.reply(HELP_MESSAGE, { parse_mode: 'Markdown' });
+});
+
 // Add expense command
 bot.command('add', async (ctx) => {
   if (!ctx.session.user) {
     return ctx.reply('Please start the bot first with /start');
   }
 
-  const input = ctx.message.text.substring(4).trim(); // Remove '/add '
+  const input = ctx.message.text.substring(4).trim(); // Remove '/add - Remove '/add '
   if (!input) {
     return ctx.reply('Please provide an amount and description. Example: /add 500 lunch');
   }
@@ -345,6 +351,12 @@ bot.command('budgetstatus', async (ctx) => {
     console.error('Budget status error:', error);
     ctx.reply(`❌ Error getting budget status: ${error.message}`);
   }
+});
+
+// Global error handling
+bot.catch((err, ctx) => {
+  console.error('Error in bot:', err);
+  ctx.reply(ERROR_MESSAGES.GENERAL_ERROR);
 });
 
 bot.launch();

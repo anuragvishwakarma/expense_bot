@@ -6,6 +6,9 @@ import { initSupabase } from './db';
 import { TransactionService } from './services/transactionService';
 import { ReportService } from './services/reportService';
 import { BudgetService } from './services/budgetService';
+import { RecurrenceService } from './services/recurrenceService';
+import { ReminderService } from './services/reminderService';
+import { startWorker } from './worker';
 import { HELP_MESSAGE, ERROR_MESSAGES } from './utils/helpMessages';
 
 dotenv.config();
@@ -19,9 +22,14 @@ const userService = new UserService();
 const transactionService = new TransactionService();
 const reportService = new ReportService();
 const budgetService = new BudgetService();
+const recurrenceService = new RecurrenceService();
+const reminderService = new ReminderService();
 
 // Initialize Supabase in service
 initSupabase(process.env.SUPABASE_URL || '', process.env.SUPABASE_ANON_KEY || '');
+
+// Start background worker for recurrences and reminders
+startWorker(bot);
 
 // Middleware to attach user to context
 bot.use(async (ctx, next) => {
@@ -57,7 +65,7 @@ bot.command('add', async (ctx) => {
     return ctx.reply('Please start the bot first with /start');
   }
 
-  const input = ctx.message.text.substring(4).trim(); // Remove '/add - Remove '/add '
+  const input = ctx.message.text.substring(4).trim(); // Remove '/add '
   if (!input) {
     return ctx.reply('Please provide an amount and description. Example: /add 500 lunch');
   }
@@ -68,10 +76,8 @@ bot.command('add', async (ctx) => {
       input,
       'expense'
     );
-    
-    ctx.reply(`✅ Expense recorded!
-Amount: ₹${transaction.amount}
-Description: ${transaction.description || 'N/A'}`);
+
+    ctx.reply(`✅ Expense recorded!\nAmount: ₹${transaction.amount}\nDescription: ${transaction.description || 'N/A'}`);
   } catch (error) {
     console.error('Add expense error:', error);
     ctx.reply(`❌ Error: ${error.message}`);
@@ -81,24 +87,22 @@ Description: ${transaction.description || 'N/A'}`);
 // Add income command (using + prefix or /income)
 bot.on('text', async (ctx) => {
   if (!ctx.session.user) return;
-  
+
   const text = ctx.message.text.trim();
-  
+
   // Handle + income format
   if (text.startsWith('+')) {
     const amountText = text.substring(1).trim();
     if (!amountText) return;
-    
+
     try {
       const transaction = await transactionService.addTransaction(
         ctx.session.user.id,
         amountText,
         'income'
       );
-      
-      ctx.reply(`✅ Income recorded!
-Amount: ₹${transaction.amount}
-Description: ${transaction.description || 'N/A'}`);
+
+      ctx.reply(`✅ Income recorded!\nAmount: ₹${transaction.amount}\nDescription: ${transaction.description || 'N/A'}`);
     } catch (error) {
       console.error('Add income error:', error);
       ctx.reply(`❌ Error: ${error.message}`);
@@ -123,10 +127,8 @@ bot.command('income', async (ctx) => {
       input,
       'income'
     );
-    
-    ctx.reply(`✅ Income recorded!
-Amount: ₹${transaction.amount}
-Description: ${transaction.description || 'N/A'}`);
+
+    ctx.reply(`✅ Income recorded!\nAmount: ₹${transaction.amount}\nDescription: ${transaction.description || 'N/A'}`);
   } catch (error) {
     console.error('Add income error:', error);
     ctx.reply(`❌ Error: ${error.message}`);
@@ -141,12 +143,12 @@ bot.command('today', async (ctx) => {
 
   try {
     const summary = await reportService.getDailySummary(ctx.session.user.id);
-    
+
     let message = `📊 *Today's Summary* (${summary.date})\n\n`;
     message += `💰 Income: ₹${summary.totalIncome.toFixed(2)}\n`;
     message += `💸 Expense: ₹${summary.totalExpense.toFixed(2)}\n`;
     message += `📈 Net: ₹${summary.net.toFixed(2)}\n\n`;
-    
+
     if (Object.keys(summary.expenseByCategory).length > 0) {
       message += `*Expenses by Category:*\n`;
       for (const [category, amount] of Object.entries(summary.expenseByCategory)) {
@@ -154,14 +156,14 @@ bot.command('today', async (ctx) => {
       }
       message += '\n';
     }
-    
+
     if (Object.keys(summary.incomeByCategory).length > 0) {
       message += `*Income by Category:*\n`;
       for (const [category, amount] of Object.entries(summary.incomeByCategory)) {
         message += `• ${category}: ₹${amount.toFixed(2)}\n`;
       }
     }
-    
+
     ctx.reply(message, { parse_mode: 'Markdown' });
   } catch (error) {
     console.error('Today report error:', error);
@@ -178,11 +180,11 @@ bot.command('monthly', async (ctx) => {
   const args = ctx.message.text.split(' ');
   let month = new Date().getMonth() + 1; // Current month (1-12)
   let year = new Date().getFullYear();
-  
+
   if (args.length >= 2) {
     month = parseInt(args[1]);
     year = parseInt(args[2] || year.toString());
-    
+
     if (isNaN(month) || month < 1 || month > 12) {
       return ctx.reply('Please provide a valid month (1-12)');
     }
@@ -193,27 +195,27 @@ bot.command('monthly', async (ctx) => {
 
   try {
     const summary = await reportService.getMonthlySummary(ctx.session.user.id, year, month);
-    
+
     const monthName = new Date(year, month - 1).toLocaleString('default', { month: 'long' });
-    let message = `📊 *${monthName} ${year} Summary*`\n\n`;
+    let message = `📊 *${monthName} ${year} Summary*\n\n`;
     message += `💰 Income: ₹${summary.totalIncome.toFixed(2)}\n`;
     message += `💸 Expense: ₹${summary.totalExpense.toFixed(2)}\n`;
     message += `📈 Net: ₹${summary.net.toFixed(2)}\n\n`;
-    
+
     if (Object.keys(summary.expenseByCategory).length > 0) {
       message += `*Top Expense Categories:*\n`;
       const sortedExpenses = Object.entries(summary.expenseByCategory)
         .sort((a, b) => b[1] - a[1])
         .slice(0, 5);
-      
+
       for (const [category, amount] of sortedExpenses) {
         message += `• ${category}: ₹${amount.toFixed(2)}\n`;
       }
       message += '\n';
     }
-    
+
     message += `_Transactions: ${summary.transactionCount}_`;
-    
+
     ctx.reply(message, { parse_mode: 'Markdown' });
   } catch (error) {
     console.error('Monthly report error:', error);
@@ -230,11 +232,11 @@ bot.command('export', async (ctx) => {
   const args = ctx.message.text.split(' ');
   let startDate = new Date().toISOString().split('T')[0]; // Today
   let endDate = startDate;
-  
+
   if (args.length >= 2) {
     startDate = args[1];
     endDate = args[2] || startDate;
-    
+
     // Basic date validation
     const dateRegex = /^\d{4}-\d{2}-\d{2}$/;
     if (!dateRegex.test(startDate) || !dateRegex.test(endDate)) {
@@ -248,7 +250,7 @@ bot.command('export', async (ctx) => {
       startDate,
       endDate
     );
-    
+
     // Send as file (Telegraf can handle this)
     await ctx.replyWithDocument({
       source: Buffer.from(csv),
@@ -296,10 +298,9 @@ bot.command('budget', async (ctx) => {
       month,
       year
     );
-    
+
     const monthName = new Date(year, month - 1).toLocaleString('default', { month: 'long' });
-    ctx.reply(`✅ Budget set for ${category}!
-${monthName} ${year}: ₹${amount.toFixed(2)}`);
+    ctx.reply(`✅ Budget set for ${category}!\n${monthName} ${year}: ₹${amount.toFixed(2)}`);
   } catch (error) {
     console.error('Set budget error:', error);
     ctx.reply(`❌ Error setting budget: ${error.message}`);
@@ -315,11 +316,11 @@ bot.command('budgetstatus', async (ctx) => {
   const args = ctx.message.text.split(' ');
   let month = new Date().getMonth() + 1;
   let year = new Date().getFullYear();
-  
+
   if (args.length >= 2) {
     month = parseInt(args[1]);
     year = parseInt(args[2] || year.toString());
-    
+
     if (isNaN(month) || month < 1 || month > 12) {
       return ctx.reply('Please provide a valid month (1-12)');
     }
@@ -330,10 +331,10 @@ bot.command('budgetstatus', async (ctx) => {
 
   try {
     const status = await budgetService.getBudgetStatus(ctx.session.user.id, month, year);
-    
+
     const monthName = new Date(year, month - 1).toLocaleString('default', { month: 'long' });
-    let message = `💰 *Budget Status for ${monthName} ${year}*`\n\n`;
-    
+    let message = `💰 *Budget Status for ${monthName} ${year}*\n\n`;
+
     if (status.length === 0) {
       message += 'No budgets set for this month. Use /budget to set budgets.\n';
     } else {
@@ -345,11 +346,127 @@ bot.command('budgetstatus', async (ctx) => {
         message += `   Remaining: ₹${budget.remaining.toFixed(2)} (${budget.percentage.toFixed(1)}% used)\n\n`;
       });
     }
-    
+
     ctx.reply(message, { parse_mode: 'Markdown' });
   } catch (error) {
     console.error('Budget status error:', error);
     ctx.reply(`❌ Error getting budget status: ${error.message}`);
+  }
+});
+
+// Recurrence commands
+bot.command('recur', async (ctx) => {
+  if (!ctx.session.user) {
+    return ctx.reply('Please start the bot first with /start');
+  }
+  const text = ctx.message.text.substring(5).trim(); // remove '/recur '
+  const parts = text.split(' ');
+  const subcmd = parts[0];
+  if (subcmd === 'add') {
+    // /recur add 500 rent expense every 1 month [start YYYY-MM-DD] [end YYYY-MM-DD]
+    const amountStr = parts[1];
+    const everyIdx = parts.indexOf('every');
+    if (everyIdx === -1) {
+      return ctx.reply('Usage: /recur add <amount> <description> <type> every <value> <unit> [start YYYY-MM-DD] [end YYYY-MM-DD]');
+    }
+    const amount = parseFloat(amountStr);
+    if (isNaN(amount) || amount <= 0) return ctx.reply('Invalid amount');
+    const description = parts[2];
+    const type = parts[3] as 'expense' | 'income';
+    if (!['expense','income'].includes(type)) return ctx.reply('Type must be expense or income');
+    const value = parseInt(parts[everyIdx + 1]);
+    const unit = parts[everyIdx + 2] as 'day' | 'week' | 'month';
+    if (isNaN(value) || value <= 0) return ctx.reply('Invalid interval value');
+    if (!['day','week','month'].includes(unit)) return ctx.reply('Unit must be day, week, or month');
+    let startDate: string | undefined;
+    let endDate: string | undefined;
+    const startIdx = parts.indexOf('start');
+    const endIdx = parts.indexOf('end');
+    if (startIdx !== -1 && startIdx + 1 < parts.length) {
+      startDate = parts[startIdx + 1];
+    }
+    if (endIdx !== -1 && endIdx + 1 < parts.length) {
+      endDate = parts[endIdx + 1];
+    }
+    try {
+      const rec = await recurrenceService.create(
+        ctx.session.user.id,
+        amount,
+        description,
+        type,
+        value,
+        unit,
+        startDate,
+        endDate
+      );
+      ctx.reply(`✅ Recurrence created! ID: ${rec.id}`);
+    } catch (error) {
+      console.error('Create recurrence error:', error);
+      ctx.reply(`❌ Error: ${error.message}`);
+    }
+  } else if (subcmd === 'list') {
+    try {
+      const recs = await recurrenceService.listActive(ctx.session.user.id);
+      if (recs.length === 0) {
+        return ctx.reply('📭 No active recurrences.');
+      }
+      let msg = '🔁 Active recurrences:\n';
+      for (const r of recs) {
+        msg += `ID: ${r.id} | ${r.amount} ${r.description} (${r.type}) every ${r.interval_value} ${r.interval_unit}`;
+        if (r.start_date) msg += ` from ${r.start_date}`;
+        if (r.end_date) msg += ` to ${r.end_date}`;
+        msg += '\n';
+      }
+      ctx.reply(msg);
+    } catch (error) {
+      console.error('List recurrences error:', error);
+      ctx.reply(`❌ Error: ${error.message}`);
+    }
+  } else if (subcmd === 'delete' || subcmd === 'remove') {
+    const id = parts[1];
+    if (!id) return ctx.reply('Usage: /recur delete <id>');
+    try {
+      await recurrenceService.deactivate(id, ctx.session.user.id);
+      ctx.reply(`🗑️ Recurrence ${id} deactivated.`);
+    } catch (error) {
+      console.error('Delete recurrence error:', error);
+      ctx.reply(`❌ Error: ${error.message}`);
+    }
+  } else {
+    ctx.reply('Unknown recurrence command. Use add, list, delete.');
+  }
+});
+
+// Reminder commands
+bot.command('reminder', async (ctx) => {
+  if (!ctx.session.user) {
+    return ctx.reply('Please start the bot first with /start');
+  }
+  const args = ctx.message.text.substring(9).trim().split(' ');
+  const action = args[0];
+  if (action === 'on') {
+    const time = args[1] ?? '21:00';
+    // Validate time format HH:MM
+    if (!/^([01]\d|2[0-3]):([0-5]\d)$/.test(time)) {
+      return ctx.reply('Please provide time in HH:MM format (24-hour).');
+    }
+    try {
+      await reminderService.setPreference(ctx.session.user.id, true, `${time}:00`);
+      ctx.reply(`✅ Daily reminder enabled at ${time}.`);
+    } catch (error) {
+      console.error('Set reminder error:', error);
+      ctx.reply(`❌ Error: ${error.message}`);
+    }
+  } else if (action === 'off') {
+    try {
+      await reminderService.setPreference(ctx.session.user.id, false);
+      ctx.reply('✅ Daily reminder disabled.');
+    } catch (error) {
+      console.error('Disable reminder error:', error);
+      ctx.reply(`❌ Error: ${error.message}`);
+    }
+  } else {
+    ctx.reply('Usage: /reminder on [HH:MM] | /reminder off');
   }
 });
 
@@ -358,8 +475,6 @@ bot.catch((err, ctx) => {
   console.error('Error in bot:', err);
   ctx.reply(ERROR_MESSAGES.GENERAL_ERROR);
 });
-
-
 
 // Production readiness
 if (process.env.NODE_ENV === 'production') {

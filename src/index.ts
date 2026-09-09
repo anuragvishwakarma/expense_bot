@@ -359,4 +359,17 @@ bot.catch((err, ctx) => {
   ctx.reply(ERROR_MESSAGES.GENERAL_ERROR);
 });
 
-bot.launch();
+
+
+// Production readiness
+if (process.env.NODE_ENV === 'production') {
+  import { configureProductionBot } from './production';
+  configureProductionBot(bot);
+}
+
+bot.launch().then(() => {
+  console.log('🤖 Expense Tracker Bot started successfully');
+}).catch((error) => {
+  console.error('❌ Failed to start bot:', error);
+  process.exit(1);
+});

@@ -1,17 +1,23 @@
 import { getSupabase } from '../db';
 import { parseAmount } from '../utils/parseAmount';
+import { CurrencyService } from './currencyService';
 
 export class TransactionService {
+  private currencyService = new CurrencyService();
+
   async addTransaction(userId: string, input: string, type: 'expense' | 'income') {
     const supabase = getSupabase();
     
-    // Parse amount and description
+    // Parse amount, currency, and description
     const parsed = parseAmount(input);
     if (!parsed) {
-      throw new Error('Invalid amount format. Use: <amount> <description>');
+      throw new Error('Invalid amount format. Use: <amount> <currency><description> or <amount> <description>');
     }
     
-    const { amount, remainder: description } = parsed;
+    const { amount, currency, remainder: description } = parsed;
+    
+    // Convert amount to base currency (INR) for storage and reporting
+    const amountBase = await this.currencyService.convert(amount, currency, 'INR');
     
     // Try to find matching category (default to first of type)
     const { data: categories, error: catError } = await supabase
@@ -26,13 +32,15 @@ export class TransactionService {
     
     const categoryId = categories?.[0]?.id || null;
     
-    // Create transaction
+    // Create transaction with original amount, currency, and base amount
     const { data: transaction, error: transError } = await supabase
       .from('transactions')
       .insert({
         user_id: userId,
         category_id: categoryId,
-        amount,
+        amount, // original amount
+        currency_code: currency,
+        amount_base: amountBase, // converted to base currency (INR)
         description: description || null,
         type
       })

@@ -11,17 +11,27 @@ export const getServerSideProps = async () => {
   const endOfMonth = new Date(now.getFullYear(), now.getMonth() + 1, 0)
   const sixMonthsAgo = new Date(now.getFullYear(), now.getMonth() - 5, 1) // inclusive start
 
-  // We'll fetch all transactions from sixMonthsAgo to now and then filter in memory for simplicity
-  const { data: transactions, error } = await supabase
-    .from('transactions')
-    .select('amount, type, date')
-    .gte('date', sixMonthsAgo.toISOString())
-    .lte('date', now.toISOString())
+  // Fetch transactions and goals in parallel
+  const [transactionsResp, goalsResp] = await Promise.all([
+    supabase
+      .from('transactions')
+      .select('amount, type, date')
+      .gte('date', sixMonthsAgo.toISOString())
+      .lte('date', now.toISOString()),
+    supabase.from('goals').select('*')
+  ])
 
-  if (error) {
-    console.error('Error fetching transactions:', error)
+  if (transactionsResp.error) {
+    console.error('Error fetching transactions:', transactionsResp.error)
     return { props: { totalIncome: 0, totalExpense: 0, net: 0, monthlyData: [], goals: [] } }
   }
+  if (goalsResp.error) {
+    console.error('Error fetching goals:', goalsResp.error)
+    return { props: { totalIncome: 0, totalExpense: 0, net: 0, monthlyData: [], goals: [] } }
+  }
+
+  const transactions = transactionsResp.data || []
+  const goals = goalsResp.data || []
 
   // Filter for current month
   const currentMonthTransactions = transactions.filter(t => {
@@ -56,11 +66,12 @@ export const getServerSideProps = async () => {
     monthlyData.push({ month: monthName, income, expense })
   }
 
-  // Placeholder goals
-  const goals = [
-    { name: 'Emergency Fund', target: 100000, saved: 25000 },
-    { name: 'Vacation', target: 50000, saved: 10000 },
-  ]
+  // Map goals to the format expected by GoalsProgress: {name, target, saved}
+  const goalsForChart = goals.map(g => ({
+    name: g.name,
+    target: Number(g.target_amount),
+    saved: Number(g.saved_amount)
+  }))
 
   return {
     props: {
@@ -68,7 +79,7 @@ export const getServerSideProps = async () => {
       totalExpense,
       net,
       monthlyData,
-      goals,
+      goals: goalsForChart
     }
   }
 }

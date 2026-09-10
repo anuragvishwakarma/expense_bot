@@ -559,6 +559,76 @@ bot.command('goal', async (ctx) => {
 
 // Global error handling
 
+// Export Excel command
+bot.command('exportexcel', async (ctx) => {
+  if (!ctx.session.user) {
+    return ctx.reply('Please start the bot first with /start');
+  }
+  const args = ctx.message.text.split(' ');
+  let startDate = new Date().toISOString().split('T')[0]; // Today
+  let endDate = startDate;
+  if (args.length >= 2) {
+    startDate = args[1];
+    endDate = args[2] || startDate;
+    // Basic date validation
+    const dateRegex = /^\d{4}-\d{2}-\d{2}$/;
+    if (!dateRegex.test(startDate) || !dateRegex.test(endDate)) {
+      return ctx.reply('Please provide dates in YYYY-MM-DD format');
+    }
+  }
+  try {
+    const excelBuffer = await exportService.exportTransactionsExcel(
+      ctx.session.user.id,
+      startDate,
+      endDate
+    );
+    await ctx.replyWithDocument({
+      source: excelBuffer,
+      filename: `transactions_${startDate}_to_${endDate}.xlsx`
+    }, {
+      caption: `📊 Transaction Excel export from ${startDate} to ${endDate}`
+    });
+  } catch (error) {
+    console.error('Export Excel error:', error);
+    ctx.reply(`❌ Error exporting data to Excel: ${error.message}`);
+  }
+});
+
+// Export PDF command
+bot.command('exportpdf', async (ctx) => {
+  if (!ctx.session.user) {
+    return ctx.reply('Please start the bot first with /start');
+  }
+  const args = ctx.message.text.split(' ');
+  let startDate = new Date().toISOString().split('T')[0]; // Today
+  let endDate = startDate;
+  if (args.length >= 2) {
+    startDate = args[1];
+    endDate = args[2] || startDate;
+    // Basic date validation
+    const dateRegex = /^\d{4}-\d{2}-\d{2}$/;
+    if (!dateRegex.test(startDate) || !dateRegex.test(endDate)) {
+      return ctx.reply('Please provide dates in YYYY-MM-DD format');
+    }
+  }
+  try {
+    const pdfBuffer = await exportService.exportTransactionsPdf(
+      ctx.session.user.id,
+      startDate,
+      endDate
+    );
+    await ctx.replyWithDocument({
+      source: pdfBuffer,
+      filename: `transactions_${startDate}_to_${endDate}.pdf`
+    }, {
+      caption: `📄 Transaction PDF export from ${startDate} to ${endDate}`
+    });
+  } catch (error) {
+    console.error('Export PDF error:', error);
+    ctx.reply(`❌ Error exporting data to PDF: ${error.message}`);
+  }
+});
+
 // Handle OCR confirmation callbacks
 bot.action(/ocr_(yes|no)/, async (ctx) => {
   const userId = ctx.from.id;

@@ -8,7 +8,7 @@ import { ReportService } from './services/reportService';
 import { BudgetService } from './services/budgetService';
 import { RecurrenceService } from './services/recurrenceService';
 import { ReminderService } from './services/reminderService';
-import { GoalService } from './services/goalService';
+import { OCRService } from './services/ocrService';
 import { startWorker } from './worker';
 import { HELP_MESSAGE, ERROR_MESSAGES } from './utils/helpMessages';
 import axios from 'axios';
@@ -30,9 +30,9 @@ const reportService = new ReportService();
 const budgetService = new BudgetService();
 const recurrenceService = new RecurrenceService();
 const reminderService = new ReminderService();
-const goalService = new GoalService();
+const ocrService = new OCRService();
 // Pending OCR results map
-const ocrPending = new Map<number, {amount: number | null; date: string | null; merchant: string | null; imageBase64: string}>();
+const pendingOCR = new Map<string, { amount: number; description: string; date: string }>();
 
 // Initialize Supabase in service
 initSupabase(process.env.SUPABASE_URL || '', process.env.SUPABASE_ANON_KEY || '');
@@ -719,6 +719,78 @@ if (process.env.NODE_ENV === 'production') {
   import { configureProductionBot } from './production';
   configureProductionBot(bot);
 }
+
+// Helper to send confirmation keyboard
+function getConfirmationKeyboard(): any {
+  return {
+    reply_markup: JSON.stringify({
+      inline_keyboard: [
+        [
+          { text: '✅ Yes, save', callback_data: 'ocr_yes' },
+          { text: '❌ No, cancel', callback_data: 'ocr_no' }
+        ]
+      ]
+    })
+  };
+}
+
+// Photo handler for OCR
+bot.on('photo', async (ctx) => {
+  if (!ctx.session.user) {
+    return ctx.reply('Please start the bot first with /start');
+  }
+  // Get the largest photo
+  const photo = ctx.message.photo[ctx.message.photo.length - 1];
+  const file_id = photo.file_id;
+  try {
+    const fileLink = await ctx.telegram.getFileLink(file_id);
+    const ocrResult = await ocrService.getOCRFromUrl(fileLink.toString());
+    if (!ocrResult || !ocrResult.text) {
+      return ctx.reply('❌ OCR failed to extract text from the image. Please try a clearer photo or enter manually with /add.');
+    }
+    const parsed = OCRService.parseOCRResult(ocrResult.text);
+    if (!parsed) {
+      return ctx.reply('❌ Could not parse amount/date from OCR text. Please try again or enter manually.');
+    }
+    // Store pending result keyed by user id
+    pendingOCR.set(ctx.from.id.toString(), parsed);
+    const preview = `🧾 *OCR Result*\\n\\n*Amount:* ₹${parsed.amount.toFixed(2)}\\n*Description:* ${parsed.description}\\n*Date:* ${parsed.date}\\n\\nSave this expense?`;
+    await ctx.replyWithPhoto({ source: await (await fetch(fileLink.toString())).buffer() }, {
+      caption: preview,
+      parse_mode: 'Markdown',
+      ...getConfirmationKeyboard()
+    });
+  } catch (error) {
+    console.error('OCR photo handler error:', error);
+    ctx.reply('❌ OCR processing failed. Please try again later.');
+  }
+});
+
+// Handle callback queries for OCR confirmation
+bot.action(/ocr_(yes|no)/, async (ctx) => {
+  const userId = ctx.from.id.toString();
+  const pending = pendingOCR.get(userId);
+  if (!pending) {
+    return ctx.answerCbQuery('No pending OCR result.', { show_alert: true });
+  }
+  if (ctx.match[1] === 'yes') {
+    try {
+      const transaction = await transactionService.addTransaction(
+        userId,
+        `${pending.amount} ${pending.description}`,
+        'expense'
+      );
+      ctx.editMessageText(`✅ Expense saved!\\nAmount: ₹${transaction.amount}\\nDescription: ${transaction.description || 'N/A'}`);
+      pendingOCR.delete(userId);
+    } catch (error) {
+      console.error('Save OCR expense error:', error);
+      ctx.answerCbQuery('❌ Failed to save expense.', { show_alert: true });
+    }
+  } else {
+    ctx.editMessageText('❌ OCR expense discarded.');
+    pendingOCR.delete(userId);
+  }
+});
 
 bot.launch().then(() => {
   console.log('🤖 Expense Tracker Bot started successfully');

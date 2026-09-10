@@ -1,7 +1,7 @@
 import { getSupabase } from '../db';
 
 export class RecurrenceService {
-  async create(userId: string, amount: number, description: string, type: 'expense' | 'income', intervalValue: number, intervalUnit: 'day' | 'week' | 'month', startDate?: string, endDate?: string) {
+  async create(userId: string, amount: number, description: string, type: 'expense' | 'income', intervalValue?: number, intervalUnit?: 'day' | 'week' | 'month', startDate?: string, endDate?: string, cronExpression?: string) {
     const supabase = getSupabase();
     const { data, error } = await supabase
       .from('recurrences')
@@ -10,10 +10,11 @@ export class RecurrenceService {
         amount,
         description,
         type,
-        interval_value: intervalValue,
-        interval_unit: intervalUnit,
+        interval_value: intervalValue ?? null,
+        interval_unit: intervalUnit ?? null,
         start_date: startDate ?? undefined,
         end_date: endDate ?? undefined,
+        cron_expression: cronExpression ?? null,
         active: true
       })
       .single();
@@ -44,7 +45,7 @@ export class RecurrenceService {
     return data;
   }
 
-  // Returns recurrences that should fire now (based on simple interval from start_date)
+  // Returns recurrences that should fire now (based on cron expression or simple interval)
   async getDueRecurrences(now: Date) {
     const supabase = getSupabase();
     const { data, error } = await supabase
@@ -53,19 +54,34 @@ export class RecurrenceService {
       .eq('active', true);
     if (error) throw error;
     const due: any[] = [];
+    const cron = require('cron-parser');
     for (const r of data ?? []) {
-      const start = new Date(r.start_date);
-      const diffTime = now.getTime() - start.getTime();
-      let diffUnits = 0;
-      if (r.interval_unit === 'day') {
-        diffUnits = Math.floor(diffTime / (1000 * 60 * 60 * 24));
-      } else if (r.interval_unit === 'week') {
-        diffUnits = Math.floor(diffTime / (1000 * 60 * 60 * 24 * 7));
-      } else if (r.interval_unit === 'month') {
-        // Approximate month as 30 days
-        diffUnits = Math.floor(diffTime / (1000 * 60 * 60 * 24 * 30));
+      let isDue = false;
+      if (r.cron_expression) {
+        try {
+          const interval = cron.parseExpression(r.cron_expression, { currentDate: now });
+          isDue = interval.isValid();
+        } catch (e) {
+          // If cron expression invalid, fallback to interval logic
+          console.warn(`Invalid cron expression for recurrence ${r.id}: ${r.cron_expression}`);
+        }
+      } else if (r.interval_value && r.interval_unit) {
+        const start = new Date(r.start_date);
+        const diffTime = now.getTime() - start.getTime();
+        let diffUnits = 0;
+        if (r.interval_unit === 'day') {
+          diffUnits = Math.floor(diffTime / (1000 * 60 * 60 * 24));
+        } else if (r.interval_unit === 'week') {
+          diffUnits = Math.floor(diffTime / (1000 * 60 * 60 * 24 * 7));
+        } else if (r.interval_unit === 'month') {
+          // Approximate month as 30 days
+          diffUnits = Math.floor(diffTime / (1000 * 60 * 60 * 24 * 30));
+        }
+        if (diffUnits % r.interval_value === 0) {
+          isDue = true;
+        }
       }
-      if (diffUnits % r.interval_value === 0) {
+      if (isDue) {
         due.push(r);
       }
     }

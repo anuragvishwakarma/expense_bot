@@ -371,24 +371,52 @@ bot.command('recur', async (ctx) => {
   const text = ctx.message.text.substring(5).trim(); // remove '/recur '
   const parts = text.split(' ');
   const subcmd = parts[0];
+
   if (subcmd === 'add') {
-    // /recur add 500 rent expense every 1 month [start YYYY-MM-DD] [end YYYY-MM-DD]
+    // /recur add <amount> <description> <type> every <value> <unit> [start YYYY-MM-DD] [end YYYY-MM-DD]
+    // OR /recur add <amount> <description> <type> cron <expression> [start YYYY-MM-DD] [end YYYY-MM-DD]
     const amountStr = parts[1];
-    const everyIdx = parts.indexOf('every');
-    if (everyIdx === -1) {
-      return ctx.reply('Usage: /recur add <amount> <description> <type> every <value> <unit> [start YYYY-MM-DD] [end YYYY-MM-DD]');
+    if (!amountStr) {
+      return ctx.reply('Usage: /recur add <amount> <description> <type> every <value> <unit> [start YYYY-MM-DD] [end YYYY-MM-DD]\n   OR: /recur add <amount> <description> <type> cron <expression> [start YYYY-MM-DD] [end YYYY-MM-DD]');
     }
     const amount = parseFloat(amountStr);
     if (isNaN(amount) || amount <= 0) return ctx.reply('Invalid amount');
     const description = parts[2];
     const type = parts[3] as 'expense' | 'income';
     if (!['expense','income'].includes(type)) return ctx.reply('Type must be expense or income');
-    const value = parseInt(parts[everyIdx + 1]);
-    const unit = parts[everyIdx + 2] as 'day' | 'week' | 'month';
-    if (isNaN(value) || value <= 0) return ctx.reply('Invalid interval value');
-    if (!['day','week','month'].includes(unit)) return ctx.reply('Unit must be day, week, or month');
+    
+    let intervalValue: number | null = null;
+    let intervalUnit: 'day' | 'week' | 'month' | null = null;
+    let cronExpression: string | null = null;
     let startDate: string | undefined;
     let endDate: string | undefined;
+    
+    // Determine if we have 'every' or 'cron' keyword
+    const keywordIdx = parts.indexOf('every');
+    const cronIdx = parts.indexOf('cron');
+    if (keywordIdx !== -1) {
+      // every syntax
+      const valueStr = parts[keywordIdx + 1];
+      const unit = parts[keywordIdx + 2] as 'day' | 'week' | 'month';
+      if (!valueStr || !unit) {
+        return ctx.reply('Usage: /recur add <amount> <description> <type> every <value> <unit> [start YYYY-MM-DD] [end YYYY-MM-DD]');
+      }
+      intervalValue = parseInt(valueStr);
+      intervalUnit = unit;
+      if (isNaN(intervalValue) || intervalValue <= 0) return ctx.reply('Invalid interval value');
+      if (!['day','week','month'].includes(intervalUnit)) return ctx.reply('Unit must be day, week, or month');
+    } else if (cronIdx !== -1) {
+      // cron syntax
+      const expression = parts[cronIdx + 1];
+      if (!expression) {
+        return ctx.reply('Usage: /recur add <amount> <description> <type> cron <expression> [start YYYY-MM-DD] [end YYYY-MM-DD]');
+      }
+      cronExpression = expression;
+      // Validate cron expression? We'll let the service handle it.
+    } else {
+      return ctx.reply('Please specify either "every <value> <unit>" or "cron <expression>"');
+    }
+    
     const startIdx = parts.indexOf('start');
     const endIdx = parts.indexOf('end');
     if (startIdx !== -1 && startIdx + 1 < parts.length) {
@@ -403,10 +431,11 @@ bot.command('recur', async (ctx) => {
         amount,
         description,
         type,
-        value,
-        unit,
+        intervalValue,
+        intervalUnit,
         startDate,
-        endDate
+        endDate,
+        cronExpression
       );
       ctx.reply(`✅ Recurrence created! ID: ${rec.id}`);
     } catch (error) {
@@ -421,7 +450,12 @@ bot.command('recur', async (ctx) => {
       }
       let msg = '🔁 Active recurrences:\n';
       for (const r of recs) {
-        msg += `ID: ${r.id} | ${r.amount} ${r.description} (${r.type}) every ${r.interval_value} ${r.interval_unit}`;
+        msg += `ID: ${r.id} | ${r.amount} ${r.description} (${r.type})`;
+        if (r.cron_expression) {
+          msg += ` cron: ${r.cron_expression}`;
+        } else {
+          msg += ` every ${r.interval_value} ${r.interval_unit}`;
+        }
         if (r.start_date) msg += ` from ${r.start_date}`;
         if (r.end_date) msg += ` to ${r.end_date}`;
         msg += '\n';
@@ -446,6 +480,7 @@ bot.command('recur', async (ctx) => {
   }
 });
 
+// Reminder commands
 // Reminder commands
 bot.command('reminder', async (ctx) => {
   if (!ctx.session.user) {

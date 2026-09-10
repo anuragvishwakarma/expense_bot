@@ -594,73 +594,106 @@ bot.command('goal', async (ctx) => {
 
 // Global error handling
 
-// Export Excel command
-bot.command('exportexcel', async (ctx) => {
+// Debt commands
+bot.command('debt', async (ctx) => {
   if (!ctx.session.user) {
     return ctx.reply('Please start the bot first with /start');
   }
-  const args = ctx.message.text.split(' ');
-  let startDate = new Date().toISOString().split('T')[0]; // Today
-  let endDate = startDate;
-  if (args.length >= 2) {
-    startDate = args[1];
-    endDate = args[2] || startDate;
-    // Basic date validation
-    const dateRegex = /^\d{4}-\d{2}-\d{2}$/;
-    if (!dateRegex.test(startDate) || !dateRegex.test(endDate)) {
-      return ctx.reply('Please provide dates in YYYY-MM-DD format');
-    }
-  }
-  try {
-    const excelBuffer = await exportService.exportTransactionsExcel(
-      ctx.session.user.id,
-      startDate,
-      endDate
-    );
-    await ctx.replyWithDocument({
-      source: excelBuffer,
-      filename: `transactions_${startDate}_to_${endDate}.xlsx`
-    }, {
-      caption: `📊 Transaction Excel export from ${startDate} to ${endDate}`
-    });
-  } catch (error) {
-    console.error('Export Excel error:', error);
-    ctx.reply(`❌ Error exporting data to Excel: ${error.message}`);
-  }
-});
+  const text = ctx.message.text.substring(5).trim(); // remove '/debt '
+  const parts = text.split(' ');
+  const subcmd = parts[0];
 
-// Export PDF command
-bot.command('exportpdf', async (ctx) => {
-  if (!ctx.session.user) {
-    return ctx.reply('Please start the bot first with /start');
-  }
-  const args = ctx.message.text.split(' ');
-  let startDate = new Date().toISOString().split('T')[0]; // Today
-  let endDate = startDate;
-  if (args.length >= 2) {
-    startDate = args[1];
-    endDate = args[2] || startDate;
-    // Basic date validation
-    const dateRegex = /^\d{4}-\d{2}-\d{2}$/;
-    if (!dateRegex.test(startDate) || !dateRegex.test(endDate)) {
-      return ctx.reply('Please provide dates in YYYY-MM-DD format');
+  if (subcmd === 'lend') {
+    // /debt lend <counterparty> <amount> [description]
+    const counterparty = parts[1];
+    const amountStr = parts[2];
+    const description = parts.slice(3).join(' ');
+    if (!counterparty || !amountStr) {
+      return ctx.reply('Usage: /debt lend <counterparty> <amount> [description]');
     }
-  }
-  try {
-    const pdfBuffer = await exportService.exportTransactionsPdf(
-      ctx.session.user.id,
-      startDate,
-      endDate
-    );
-    await ctx.replyWithDocument({
-      source: pdfBuffer,
-      filename: `transactions_${startDate}_to_${endDate}.pdf`
-    }, {
-      caption: `📄 Transaction PDF export from ${startDate} to ${endDate}`
-    });
-  } catch (error) {
-    console.error('Export PDF error:', error);
-    ctx.reply(`❌ Error exporting data to PDF: ${error.message}`);
+    const amount = parseFloat(amountStr);
+    if (isNaN(amount) || amount <= 0) {
+      return ctx.reply('Please provide a valid amount');
+    }
+    try {
+      const debt = await debtService.createDebt(ctx.session.user.id, counterparty, amount, 'lend', description || null);
+      ctx.reply(`✅ Debt recorded!\nYou lent ₹${debt.amount.toFixed(2)} to ${debt.counterparty}`);
+    } catch (error) {
+      console.error('Create debt error:', error);
+      ctx.reply(`❌ Error: ${error.message}`);
+    }
+  } else if (subcmd === 'borrow') {
+    // /debt borrow <counterparty> <amount> [description]
+    const counterparty = parts[1];
+    const amountStr = parts[2];
+    const description = parts.slice(3).join(' ');
+    if (!counterparty || !amountStr) {
+      return ctx.reply('Usage: /debt borrow <counterparty> <amount> [description]');
+    }
+    const amount = parseFloat(amountStr);
+    if (isNaN(amount) || amount <= 0) {
+      return ctx.reply('Please provide a valid amount');
+    }
+    try {
+      const debt = await debtService.createDebt(ctx.session.user.id, counterparty, amount, 'borrow', description || null);
+      ctx.reply(`✅ Debt recorded!\nYou borrowed ₹${debt.amount.toFixed(2)} from ${debt.counterparty}`);
+    } catch (error) {
+      console.error('Create debt error:', error);
+      ctx.reply(`❌ Error: ${error.message}`);
+    }
+  } else if (subcmd === 'settle') {
+    // /debt settle <id> <amount>
+    const debtId = parts[1];
+    const amountStr = parts[2];
+    if (!debtId || !amountStr) {
+      return ctx.reply('Usage: /debt settle <id> <amount>');
+    }
+    const amount = parseFloat(amountStr);
+    if (isNaN(amount) || amount <= 0) {
+      return ctx.reply('Please provide a valid amount to settle');
+    }
+    try {
+      const updatedDebt = await debtService.settleDebt(debtId, ctx.session.user.id, amount);
+      ctx.reply(`✅ Debt settled!\n${updatedDebt.counterparty}: ₹${updatedDebt.settled_amount.toFixed(2)} / ₹${updatedDebt.amount.toFixed(2)} settled`);
+    } catch (error) {
+      console.error('Settle debt error:', error);
+      ctx.reply(`❌ Error: ${error.message}`);
+    }
+  } else if (subcmd === 'list') {
+    try {
+      const debts = await debtService.listDebts(ctx.session.user.id);
+      if (debts.length === 0) {
+        return ctx.reply('📭 No debts recorded yet.');
+      }
+      let msg = '💰 Your debts:\n';
+      for (const d of debts) {
+        const status = d.settled ? '✅ Settled' : '⏳ Pending';
+        const lentOrBorrowed = d.type === 'lend' ? 'lent' : 'borrowed';
+        msg += `• ${status} ${lentOrBorrowed} ₹${d.amount.toFixed(2)} to/from ${d.counterparty}`;
+        if d.description {
+          msg += ` (${d.description})`;
+        }
+        msg += `\n`;
+      }
+      ctx.reply(msg);
+    } catch (error) {
+      console.error('List debts error:', error);
+      ctx.reply(`❌ Error: ${error.message}`);
+    }
+  } else if (subcmd === 'delete' || subcmd === 'remove') {
+    const debtId = parts[1];
+    if (!debtId) {
+      return ctx.reply('Usage: /debt delete <debt_id>');
+    }
+    try {
+      await debtService.deleteDebt(debtId, ctx.session.user.id);
+      ctx.reply(`🗑️ Debt deleted.`);
+    } catch (error) {
+      console.error('Delete debt error:', error);
+      ctx.reply(`❌ Error: ${error.message}`);
+    }
+  } else {
+    ctx.reply('Unknown debt command. Use lend, borrow, settle, list, delete.');
   }
 });
 

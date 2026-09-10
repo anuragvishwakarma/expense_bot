@@ -33,6 +33,8 @@ const reminderService = new ReminderService();
 const goalService = new GoalService();
 // Pending OCR results map
 const ocrPending = new Map<number, {amount: number | null; date: string | null; merchant: string | null; imageBase64: string}>();
+// Pending voice transcriptions map
+const voicePending = new Map<number, string>();
 
 // Initialize Supabase in service
 initSupabase(process.env.SUPABASE_URL || '', process.env.SUPABASE_ANON_KEY || '');
@@ -626,6 +628,88 @@ bot.command('exportpdf', async (ctx) => {
   } catch (error) {
     console.error('Export PDF error:', error);
     ctx.reply(`❌ Error exporting data to PDF: ${error.message}`);
+  }
+});
+
+// Voice message handler
+bot.on('voice', async (ctx) => {
+  if (!ctx.session.user) {
+    return ctx.reply('Please start the bot first with /start');
+  }
+  try {
+    // Get the voice file link
+    const fileId = ctx.message.voice.file_id;
+    const fileLink = await ctx.telegram.getFileLink(fileId);
+    // Transcribe the voice
+    const transcription = await voiceService.transcribeVoice(fileLink.toString());
+    if (!transcription) {
+      return ctx.reply('❌ Could not transcribe the voice message. Please try again or enter manually with /add.');
+    }
+    // Store pending transcription
+    voicePending.set(ctx.from.id, transcription);
+    // Determine type (expense or income) based on leading '+'
+    let type = 'expense';
+    let displayText = transcription;
+    if (transcription.startsWith('+')) {
+      type = 'income';
+      displayText = transcription.substring(1);
+    }
+    const preview = `🎙️ *Voice Transcription*\n\nYou said: "${displayText}"\n\nSave this as a ${type}?`;
+    await ctx.reply(preview, {
+      reply_markup: JSON.stringify({
+        inline_keyboard: [
+          [
+            { text: '✅ Yes, save', callback_data: 'voice_yes' },
+            { text: '❌ No, cancel', callback_data: 'voice_no' }
+          ]
+        ]
+      }),
+      parse_mode: 'Markdown'
+    });
+  } catch (error) {
+    console.error('Voice message handler error:', error);
+    ctx.reply('❌ Voice processing failed. Please try again later.');
+  }
+});
+
+// Handle callback queries for voice confirmation
+bot.action(/voice_(yes|no)/, async (ctx) => {
+  const userId = ctx.from.id;
+  const transcription = voicePending.get(userId);
+  if (!transcription) {
+    return ctx.answerCbQuery('No pending voice transcription.', { show_alert: true });
+  }
+  if (ctx.match[1] === 'yes') {
+    try {
+      // Parse the transcription to get amount and description
+      const parsed = parseAmount(transcription);
+      if (!parsed) {
+        return ctx.answerCbQuery('❌ Could not parse amount from transcription. Please try again or enter manually.', { show_alert: true });
+      }
+      // Determine type based on leading '+'
+      let type = 'expense';
+      let input = transcription;
+      if (transcription.startsWith('+')) {
+        type = 'income';
+        input = transcription.substring(1).trim();
+      } else {
+        input = transcription.trim();
+      }
+      // Use the transaction service to add the transaction
+      const transaction = await transactionService.addTransaction(
+        userId,
+        input,
+        type
+      );
+      ctx.editMessageText(`✅ ${type === 'income' ? 'Income' : 'Expense'} saved!\nAmount: ₹${transaction.amount}\nDescription: ${transaction.description || 'N/A'}`);
+      voicePending.delete(userId);
+    } catch (error) {
+      console.error('Save voice transaction error:', error);
+      ctx.answerCbQuery('❌ Failed to save transaction.', { show_alert: true });
+    }
+  } else {
+    ctx.editMessageText('❌ Voice transaction discarded.');
+    voicePending.delete(userId);
   }
 });
 

@@ -1,53 +1,65 @@
 import { getSupabase } from '../db';
 
 export class CurrencyService {
-  // Simple in-memory cache for rates (optional, could use Redis or DB table)
-  private static cache: Map<string, { rate: number; expiresAt: number }> = new Map();
-  private static readonly CACHE_TTL_MS = 60 * 60 * 1000; // 1 hour
+  private apiKey: string | null;
+  private baseCurrency: string = 'INR';
+  private cache: Map<string, { rate: number; timestamp: number }> = new Map();
+  private cacheDuration: number = 60 * 60 * 1000; // 1 hour
 
-  async getRate(base: string, target: string): Promise<number> {
-    if (base === target) return 1;
-    const key = `${base}:${target}`;
-    const cached = CurrencyService.cache.get(key);
-    if (cached && Date.now() < cached.expiresAt) {
-      return cached.rate;
-    }
-    // Try to fetch from rates table
-    const supabase = getSupabase();
-    const { data, error } = await supabase
-      .from('currency_rates')
-      .select('rate')
-      .eq('base_currency', base)
-      .eq('target_currency', target)
-      .single();
-    if (!error && data) {
-      const rate = Number(data.rate);
-      CurrencyService.cache.set(key, { rate, expiresAt: Date.now() + CurrencyService.CACHE_TTL_MS });
-      return rate;
-    }
-    // Fallback: use a free API (exchangerate.host) - optional
-    try {
-      const resp = await fetch(`https://api.exchangerate.host/latest?base=${base}&symbols=${target}`);
-      const json = await resp.json();
-      if (json.success && json.rates && json.rates[target]) {
-        const rate = Number(json.rates[target]);
-        // Store in DB for future use
-        await supabase
-          .from('currency_rates')
-          .upsert({ base_currency: base, target_currency: target, rate }, { onConflict: ['base_currency', 'target_currency'] });
-        CurrencyService.cache.set(key, { rate, expiresAt: Date.now() + CurrencyService.CACHE_TTL_MS });
-        return rate;
-      }
-    } catch (e) {
-      console.warn('Failed to fetch exchange rate from API', e);
-    }
-    // If all fails, assume 1:1 (should not happen for major currencies)
-    return 1;
+  constructor(apiKey: string | null) {
+    this.apiKey = apiKey;
   }
 
+  /**
+   * Convert an amount from one currency to another.
+   * If apiKey is not provided, returns the same amount (assuming base currency).
+   * Uses a free API (exchangerate.host) with caching.
+   */
   async convert(amount: number, from: string, to: string): Promise<number> {
-    if (from === to) return amount;
-    const rate = await this.getRate(from, to);
-    return amount * rate;
+    if (!this.apiKey) {
+      // If no API key, assume same currency (or base currency conversion not available)
+      // For simplicity, we just return the amount if converting to/from same currency.
+      // In a real app, you might want to throw or use a fixed rate.
+      if (from.toUpperCase() === to.toUpperCase()) {
+        return amount;
+      }
+      // Without API key, we cannot convert. We'll just return the amount and log a warning.
+      console.warn('No API key for currency conversion; returning original amount.');
+      return amount;
+    }
+
+    const fromUpper = from.toUpperCase();
+    const toUpper = to.toUpperCase();
+
+    // If same currency, return amount
+    if (fromUpper === toUpper) {
+      return amount;
+    }
+
+    const cacheKey = `${fromUpper}-${toUpper}`;
+    const cached = this.cache.get(cacheKey);
+    const now = Date.now();
+
+    if (cached && now - cached.timestamp < this.cacheDuration) {
+      return amount * cached.rate;
+    }
+
+    try {
+      const response = await fetch(`https://api.exchangerate.host/convert?from=${fromUpper}&to=${toUpper}&amount=1&access_key=${this.apiKey}`);
+      if (!response.ok) {
+        throw new Error(`Failed to fetch conversion rate: ${response.status}`);
+      }
+      const data = await response.json();
+      if (!data.success) {
+        throw new Error(`API error: ${data.error.info}`);
+      }
+      const rate = data.result; // This is the amount of 'to' currency for 1 unit of 'from'
+      this.cache.set(cacheKey, { rate, timestamp: now });
+      return amount * rate;
+    } catch (error) {
+      console.error('Currency conversion error:', error);
+      // Fallback: return original amount (assuming same currency) to avoid breaking the flow
+      return amount;
+    }
   }
 }

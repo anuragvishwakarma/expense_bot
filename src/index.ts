@@ -8,6 +8,7 @@ import { ReportService } from './services/reportService';
 import { BudgetService } from './services/budgetService';
 import { RecurrenceService } from './services/recurrenceService';
 import { ReminderService } from './services/reminderService';
+import { GoalService } from './services/goalService';
 import { startWorker } from './worker';
 import { HELP_MESSAGE, ERROR_MESSAGES } from './utils/helpMessages';
 import axios from 'axios';
@@ -29,6 +30,8 @@ const reportService = new ReportService();
 const budgetService = new BudgetService();
 const recurrenceService = new RecurrenceService();
 const reminderService = new ReminderService();
+const goalService = new GoalService();
+// Pending OCR results map
 const ocrPending = new Map<number, {amount: number | null; date: string | null; merchant: string | null; imageBase64: string}>();
 
 // Initialize Supabase in service
@@ -473,6 +476,84 @@ bot.command('reminder', async (ctx) => {
     }
   } else {
     ctx.reply('Usage: /reminder on [HH:MM] | /reminder off');
+  }
+});
+
+// Goal commands
+bot.command('goal', async (ctx) => {
+  if (!ctx.session.user) {
+    return ctx.reply('Please start the bot first with /start');
+  }
+  const text = ctx.message.text.substring(5).trim(); // remove '/goal '
+  const parts = text.split(' ');
+  const subcmd = parts[0];
+
+  if (subcmd === 'set') {
+    // /goal set <name> <target>
+    const name = parts[1];
+    const targetStr = parts[2];
+    if (!name || !targetStr) {
+      return ctx.reply('Usage: /goal set <name> <target_amount>');
+    }
+    const targetAmount = parseFloat(targetStr);
+    if (isNaN(targetAmount) || targetAmount <= 0) {
+      return ctx.reply('Please provide a valid target amount');
+    }
+    try {
+      const goal = await goalService.createGoal(ctx.session.user.id, name, targetAmount);
+      ctx.reply(`✅ Goal created!\\nName: ${goal.name}\\nTarget: ₹${goal.target_amount.toFixed(2)}`);
+    } catch (error) {
+      console.error('Create goal error:', error);
+      ctx.reply(`❌ Error: ${error.message}`);
+    }
+  } else if (subcmd === 'list') {
+    try {
+      const goals = await goalService.listGoals(ctx.session.user.id);
+      if (goals.length === 0) {
+        return ctx.reply('📭 No goals set yet. Use /goal set to create one.');
+      }
+      let msg = '🎯 Your goals:\\n';
+      for (const g of goals) {
+        const progress = (g.saved_amount / g.target_amount) * 100;
+        msg += `• ${g.name}: ₹${g.saved_amount.toFixed(2)} / ₹${g.target_amount.toFixed(2)} (${progress.toFixed(1)}%)\\n`;
+      }
+      ctx.reply(msg);
+    } catch (error) {
+      console.error('List goals error:', error);
+      ctx.reply(`❌ Error: ${error.message}`);
+    }
+  } else if (subcmd === 'progress') {
+    // /goal progress <id> <amount>
+    const goalId = parts[1];
+    const amountStr = parts[2];
+    if (!goalId || !amountStr) {
+      return ctx.reply('Usage: /goal progress <goal_id> <amount_to_add>');
+    }
+    const amount = parseFloat(amountStr);
+    if (isNaN(amount) || amount <= 0) {
+      return ctx.reply('Please provide a valid amount to add');
+    }
+    try {
+      const updatedGoal = await goalService.updateProgress(goalId, ctx.session.user.id, amount);
+      ctx.reply(`✅ Progress updated!\\n${updatedGoal.name}: ₹${updatedGoal.saved_amount.toFixed(2)} / ₹${updatedGoal.target_amount.toFixed(2)}`);
+    } catch (error) {
+      console.error('Update goal progress error:', error);
+      ctx.reply(`❌ Error: ${error.message}`);
+    }
+  } else if (subcmd === 'delete' || subcmd === 'remove') {
+    const goalId = parts[1];
+    if (!goalId) {
+      return ctx.reply('Usage: /goal delete <goal_id>');
+    }
+    try {
+      await goalService.deleteGoal(goalId, ctx.session.user.id);
+      ctx.reply(`🗑️ Goal deleted.`);
+    } catch (error) {
+      console.error('Delete goal error:', error);
+      ctx.reply(`❌ Error: ${error.message}`);
+    }
+  } else {
+    ctx.reply('Unknown goal command. Use set, list, progress, delete.');
   }
 });
 

@@ -27,8 +27,9 @@ export class VoiceService {
         config: config,
       };
       const [response] = await this.speechClient.recognize(request);
-      const transcription = response.results
-        .map(result => result.alternatives[0].transcript)
+      const transcription = (response.results || [])
+        .map(result => result.alternatives?.[0]?.transcript || '')
+        .filter(Boolean)
         .join('\n');
       return transcription.trim();
     } catch (error) {

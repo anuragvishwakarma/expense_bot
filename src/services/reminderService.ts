@@ -18,7 +18,7 @@ export class ReminderService {
       .from('user_reminders')
       .upsert(
         { user_id: userId, enabled, reminder_time: time, updated_at: new Date().toISOString() },
-        { onConflict: ['user_id'] }
+        { onConflict: 'user_id' }
       )
       .single();
     if (error) throw error;

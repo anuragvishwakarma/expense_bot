@@ -1,5 +1,20 @@
 import { getSupabase } from '../db';
 
+interface Category {
+  name: string;
+  icon?: string;
+}
+
+interface BudgetWithCategory {
+  amount: number;
+  category: Category | null;
+}
+
+interface TransactionWithCategory {
+  amount: number;
+  category: Category | null;
+}
+
 export class BudgetService {
   async setBudget(userId: string, categoryName: string, amount: number, month: number, year: number) {
     const supabase = getSupabase();
@@ -10,8 +25,8 @@ export class BudgetService {
       .select('id')
       .eq('user_id', userId)
       .eq('name', categoryName)
-      .eq('type', 'expense') // Budgets are typically for expenses
-      .single();
+      .eq('type', 'expense')
+      .maybeSingle();
 
     let categoryId: string | null = null;
     
@@ -23,8 +38,9 @@ export class BudgetService {
           user_id: userId,
           name: categoryName,
           type: 'expense',
-          icon: '💰' // Default icon
+          icon: '💰'
         })
+        .select('id')
         .single();
         
       if (createError) throw createError;
@@ -32,7 +48,7 @@ export class BudgetService {
     } else if (catError) {
       throw catError;
     } else {
-      categoryId = category.id;
+      categoryId = category!.id;
     }
     
     // Upsert budget (insert or update)
@@ -45,7 +61,7 @@ export class BudgetService {
         month,
         year
       }, {
-        onConflict: ['user_id', 'category_id', 'month', 'year']
+        onConflict: 'user_id,category_id,month,year'
       })
       .single();
 
@@ -61,7 +77,7 @@ export class BudgetService {
       .from('budgets')
       .select(`
         amount,
-        category:categories(name, icon)
+        category:categories!inner(name, icon)
       `)
       .eq('user_id', userId)
       .eq('month', month)
@@ -77,7 +93,7 @@ export class BudgetService {
       .from('transactions')
       .select(`
         amount,
-        category:categories(name)
+        category:categories!inner(name)
       `)
       .eq('user_id', userId)
       .eq('type', 'expense')
@@ -86,15 +102,18 @@ export class BudgetService {
 
     if (expenseError) throw expenseError;
     
+    const budgetsTyped = budgets as unknown as BudgetWithCategory[];
+    const expensesTyped = expenses as unknown as TransactionWithCategory[];
+
     // Calculate spent by category
-    const spentByCategory = expenses.reduce((acc, t) => {
+    const spentByCategory = expensesTyped.reduce((acc, t) => {
       const catName = t.category?.name || 'Uncategorized';
       acc[catName] = (acc[catName] || 0) + t.amount;
       return acc;
     }, {} as Record<string, number>);
     
     // Combine budget and actual data
-    const budgetStatus = budgets.map(budget => {
+    const budgetStatus = budgetsTyped.map(budget => {
       const categoryName = budget.category?.name || 'Uncategorized';
       const budgeted = budget.amount;
       const spent = spentByCategory[categoryName] || 0;
@@ -107,7 +126,7 @@ export class BudgetService {
         budgeted,
         spent,
         remaining,
-        percentage: Math.min(percentage, 100), // Cap at 100%
+        percentage: Math.min(percentage, 100),
         overBudget: spent > budgeted
       };
     });

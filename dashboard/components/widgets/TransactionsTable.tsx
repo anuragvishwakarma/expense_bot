@@ -1,17 +1,17 @@
+"use client"
+
 import { ArrowUpDown, Calendar, Trash2 } from 'lucide-react'
 
-export default function TransactionsTable({
-  transactions,
-}: {
-  transactions: Array<{
-    id: string
-    amount: number
-    type: 'expense' | 'income'
-    description: string
-    date: string
-    category?: { name: string; icon: string }
-  }>
->) {
+interface Transaction {
+  id: string
+  amount: number
+  type: 'expense' | 'income'
+  description: string | null
+  date: string
+  category?: { name: string; icon: string } | null
+}
+
+export default function TransactionsTable({ transactions }: { transactions: Transaction[] }): React.ReactElement {
   return (
     <div className="overflow-x-auto">
       <table className="w-full text-sm text-left text-gray-500">
@@ -50,15 +50,13 @@ export default function TransactionsTable({
                 )}
               </td>
               <td className="py-3 px-4 text-sm text-right space-x-2">
-                {/* In a real app, we would have edit and delete buttons */}
-                {/* For now, just show a placeholder */}
                 <span className="text-xs text-gray-400">Manage</span>
               </td>
             </tr>
           ))}
           {transactions.length === 0 && (
             <tr>
-              <td colSpan="5" className="py-4 text-center text-gray-500">
+              <td colSpan={5} className="py-4 text-center text-gray-500">
                 No transactions found.
               </td>
             </tr>

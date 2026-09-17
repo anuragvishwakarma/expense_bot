@@ -3,11 +3,25 @@ import { parseAmount } from '../utils/parseAmount';
 import { CurrencyService } from './currencyService';
 import { AccountService } from './accountService';
 
+interface TransactionRow {
+  id: string;
+  user_id: string;
+  account_id: string;
+  category_id: string | null;
+  amount: number;
+  currency_code: string;
+  amount_base: number;
+  description: string | null;
+  type: 'expense' | 'income';
+  date: string;
+  created_at: string;
+}
+
 export class TransactionService {
   private currencyService = new CurrencyService();
   private accountService = new AccountService();
 
-  async addTransaction(userId: string, input: string, type: 'expense' | 'income', accountId?: string) {
+  async addTransaction(userId: string, input: string, type: 'expense' | 'income', accountId?: string): Promise<TransactionRow> {
     const supabase = getSupabase();
     
     // Parse amount, currency, and description
@@ -88,15 +102,17 @@ export class TransactionService {
       .from('transactions')
       .select(`
         *,
-        category:categories(name, icon),
-        account:accounts(name, type, currency_code)
+        category:categories!inner(name, icon),
+        account:accounts!inner(name, type, currency_code)
       `)
       .eq('user_id', userId)
       .order('date', { ascending: false })
       .order('created_at', { ascending: false });
 
     if (options.limit) query = query.limit(options.limit);
-    if (options.offset) query = query.offset(options.offset);
+    if (options.offset !== undefined && options.limit) {
+      query = query.range(options.offset, options.offset + options.limit - 1);
+    }
     if (options.startDate) query = query.gte('date', options.startDate);
     if (options.endDate) query = query.lte('date', options.endDate);
     if (options.type) query = query.eq('type', options.type);

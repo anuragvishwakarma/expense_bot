@@ -1,10 +1,14 @@
+"use client"
+
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer } from 'recharts'
 
-export default function IncomeExpenseChart({
-  data,
-}: {
-  data: Array<{ month: string; income: number; expense: number }>
-}) {
+interface ChartData {
+  month: string
+  income: number
+  expense: number
+}
+
+export default function IncomeExpenseChart({ data }: { data: ChartData[] }): React.ReactElement {
   return (
     <ResponsiveContainer width="100%" height={300}>
       <BarChart data={data}>

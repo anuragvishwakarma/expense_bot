@@ -1,11 +1,17 @@
 import { getSupabase } from '../db';
 import * as ExcelJS from 'exceljs';
-import { PDFDocument, rgb, StandardFonts } from 'pdfkit';
+import PDFDocument from 'pdfkit';
+
+interface TransactionRow {
+  amount: number;
+  type: string;
+  date: string;
+  description: string | null;
+  category?: { name: string } | null;
+}
 
 export class ExportService {
-  /**
-   * Export transactions to CSV string
-   */
+  /** Export transactions to CSV string */
   async exportTransactionsCSV(userId: string, startDate: string, endDate: string): Promise<string> {
     const supabase = getSupabase();
     const { data, error } = await supabase
@@ -26,17 +32,17 @@ export class ExportService {
 
     // Build CSV
     const header = ['Date', 'Type', 'Category', 'Description', 'Amount'];
-    const rows = (data || []).map(t => [
+    const rows = (data as unknown as TransactionRow[] || []).map(t => [
       new Date(t.date).toISOString().split('T')[0],
       t.type,
       t.category?.name || '',
       t.description || '',
       t.amount
     ]);
-    const csvContent = [header, ...rows].map(row => 
+    const csvContent = [header, ...rows].map(row =>
       row.map(field => {
         if (typeof field === 'string' && field.includes(',')) {
-          return `"${field.replace(/"/g, '""')}"`;
+          return `"${field.replace(/\"/g, '""')}"`;
         }
         return field;
       }).join(',')
@@ -45,9 +51,7 @@ export class ExportService {
     return csvContent;
   }
 
-  /**
-   * Export transactions to Excel workbook (returns Buffer)
-   */
+  /** Export transactions to Excel workbook (returns Buffer) */
   async exportTransactionsExcel(userId: string, startDate: string, endDate: string): Promise<Buffer> {
     const supabase = getSupabase();
     const { data, error } = await supabase
@@ -79,7 +83,7 @@ export class ExportService {
     ];
 
     // Add rows
-    (data || []).forEach(t => {
+    (data as unknown as TransactionRow[] || []).forEach(t => {
       worksheet.addRow({
         date: new Date(t.date).toISOString().split('T')[0],
         type: t.type,
@@ -95,12 +99,10 @@ export class ExportService {
     headerRow.alignment = { horizontal: 'center' };
 
     // Generate buffer
-    return await workbook.xlsx.writeBuffer();
+    return await workbook.xlsx.writeBuffer() as unknown as Buffer;
   }
 
-  /**
-   * Export transactions to PDF (returns Buffer)
-   */
+  /** Export transactions to PDF (returns Buffer) */
   async exportTransactionsPdf(userId: string, startDate: string, endDate: string): Promise<Buffer> {
     const supabase = getSupabase();
     const { data, error } = await supabase
@@ -121,13 +123,9 @@ export class ExportService {
 
     // Create a PDF document
     const doc = new PDFDocument({ size: 'A4', margin: 50 });
-    const buffers: any[] = [];
+    const buffers: Buffer[] = [];
 
-    doc.on('data', buffers.push.bind(buffers));
-    doc.on('end', () => {
-      const pdfData = Buffer.concat(buffers);
-      // resolve will be called after end
-    });
+    doc.on('data', (chunk: Buffer) => buffers.push(chunk));
 
     // Title
     doc.fontSize(20).text('Transaction Report', { align: 'center' });
@@ -147,7 +145,7 @@ export class ExportService {
 
     // Table rows
     let y = doc.y;
-    (data || []).forEach(t => {
+    (data as unknown as TransactionRow[] || []).forEach(t => {
       if (y > 700) { // new page if needed
         doc.addPage();
         y = 50;

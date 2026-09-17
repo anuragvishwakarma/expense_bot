@@ -1,12 +1,12 @@
-import { Telegraf } from 'telegraf';
+import { Telegraf, Context } from 'telegraf';
 import { RecurrenceService } from './services/recurrenceService';
 import { TransactionService } from './services/transactionService';
 import { ReminderService } from './services/reminderService';
 import { UserService } from './services/userService';
-import { initSupabase } from './db';
+import { initSupabase, getSupabase } from './db';
 import cron from 'node-cron';
 
-export function startWorker(bot: Telegraf<Telegraf.ContextMessageUpdate>) {
+export function startWorker(bot: Telegraf<Context>) {
   const recurrenceService = new RecurrenceService();
   const transactionService = new TransactionService();
   const reminderService = new ReminderService();

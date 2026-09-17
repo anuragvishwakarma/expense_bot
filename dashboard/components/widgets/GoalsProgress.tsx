@@ -1,8 +1,10 @@
-export default function GoalsProgress({
-  goals,
-}: {
-  goals: Array<{ name: string; target: number; saved: number }>
->) {
+interface GoalData {
+  name: string
+  target: number
+  saved: number
+}
+
+export default function GoalsProgress({ goals }: { goals: GoalData[] }): React.ReactElement {
   return (
     <div className="space-y-4">
       {goals.map((goal, idx) => (
@@ -12,7 +14,7 @@ export default function GoalsProgress({
           </h3>
           <div className="w-full bg-gray-200 rounded-full h-2.5">
             <div
-              className={`bg-blue-500 h-2.5 rounded-full`}
+              className="bg-blue-500 h-2.5 rounded-full"
               style={{ width: `${Math.min((goal.saved / goal.target) * 100, 100)}%` }}
             />
           </div>

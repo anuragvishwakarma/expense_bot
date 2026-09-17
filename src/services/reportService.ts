@@ -1,5 +1,18 @@
 import { getSupabase } from '../db';
 
+interface Category {
+  name: string;
+  icon?: string;
+}
+
+interface TransactionWithCategory {
+  amount: number;
+  type: 'expense' | 'income';
+  date: string;
+  description?: string | null;
+  category: Category | null;
+}
+
 export class ReportService {
   async getDailySummary(userId: string, date: string = new Date().toISOString().split('T')[0]) {
     const supabase = getSupabase();
@@ -9,15 +22,16 @@ export class ReportService {
       .select(`
         amount,
         type,
-        category:categories(name, icon)
+        category:categories!inner(name, icon)
       `)
       .eq('user_id', userId)
       .eq('date', date);
 
     if (error) throw error;
 
-    const expenses = data.filter(t => t.type === 'expense');
-    const income = data.filter(t => t.type === 'income');
+    const transactions = data as unknown as TransactionWithCategory[];
+    const expenses = transactions.filter(t => t.type === 'expense');
+    const income = transactions.filter(t => t.type === 'income');
     
     const totalExpense = expenses.reduce((sum, t) => sum + t.amount, 0);
     const totalIncome = income.reduce((sum, t) => sum + t.amount, 0);
@@ -58,7 +72,7 @@ export class ReportService {
         amount,
         type,
         date,
-        category:categories(name, icon)
+        category:categories!inner(name, icon)
       `)
       .eq('user_id', userId)
       .gte('date', startDate)
@@ -67,15 +81,17 @@ export class ReportService {
 
     if (error) throw error;
 
+    const transactions = data as unknown as TransactionWithCategory[];
+
     // Calculate monthly totals
-    const expenses = data.filter(t => t.type === 'expense');
-    const income = data.filter(t => t.type === 'income');
+    const expenses = transactions.filter(t => t.type === 'expense');
+    const income = transactions.filter(t => t.type === 'income');
     
     const totalExpense = expenses.reduce((sum, t) => sum + t.amount, 0);
     const totalIncome = income.reduce((sum, t) => sum + t.amount, 0);
     
     // Daily breakdown
-    const dailyBreakdown = data.reduce((acc, t) => {
+    const dailyBreakdown = transactions.reduce((acc, t) => {
       const date = t.date;
       if (!acc[date]) acc[date] = { income: 0, expense: 0 };
       if (t.type === 'income') {
@@ -106,7 +122,7 @@ export class ReportService {
         acc[catName] = (acc[catName] || 0) + t.amount;
         return acc;
       }, {} as Record<string, number>),
-      transactionCount: data.length
+      transactionCount: transactions.length
     };
   }
 
@@ -120,7 +136,7 @@ export class ReportService {
         amount,
         type,
         description,
-        category:categories(name)
+        category:categories!inner(name)
       `)
       .eq('user_id', userId)
       .gte('date', startDate)
@@ -129,9 +145,11 @@ export class ReportService {
 
     if (error) throw error;
     
+    const transactions = data as unknown as TransactionWithCategory[];
+
     // Convert to CSV format
     const headers = ['Date', 'Type', 'Amount', 'Description', 'Category'];
-    const rows = data.map(t => [
+    const rows = transactions.map(t => [
       t.date,
       t.type === 'income' ? 'Income' : 'Expense',
       `₹${t.amount}`,
@@ -148,8 +166,7 @@ export class ReportService {
             : field
         ).join(',')
       )
-    ].join('
-');
+    ].join('\n');
     
     return csvContent;
   }

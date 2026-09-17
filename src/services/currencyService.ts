@@ -6,7 +6,7 @@ export class CurrencyService {
   private cache: Map<string, { rate: number; timestamp: number }> = new Map();
   private cacheDuration: number = 60 * 60 * 1000; // 1 hour
 
-  constructor(apiKey: string | null) {
+  constructor(apiKey: string | null = null) {
     this.apiKey = apiKey;
   }
 
@@ -49,11 +49,16 @@ export class CurrencyService {
       if (!response.ok) {
         throw new Error(`Failed to fetch conversion rate: ${response.status}`);
       }
-      const data = await response.json();
-      if (!data.success) {
-        throw new Error(`API error: ${data.error.info}`);
+      interface ExchangeRateResponse {
+        success: boolean;
+        error?: { info: string };
+        result?: number;
       }
-      const rate = data.result; // This is the amount of 'to' currency for 1 unit of 'from'
+      const data = await response.json() as ExchangeRateResponse;
+      if (!data.success) {
+        throw new Error(`API error: ${data.error?.info || 'Unknown error'}`);
+      }
+      const rate = data.result ?? 1; // This is the amount of 'to' currency for 1 unit of 'from'
       this.cache.set(cacheKey, { rate, timestamp: now });
       return amount * rate;
     } catch (error) {

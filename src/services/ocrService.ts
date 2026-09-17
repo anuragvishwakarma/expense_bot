@@ -1,4 +1,5 @@
 import axios from 'axios';
+import FormData from 'form-data';
 import { getSupabase } from '../db';
 
 export class OCRService {
@@ -22,7 +23,7 @@ export class OCRService {
       form.append('apikey', this.apiKey);
 
       const resp = await axios.post(this.apiUrl, form, {
-        headers: { ...form.getHeaders() },
+        headers: form.getHeaders(),
       });
       if (resp.data && resp.data.ParsedResults && resp.data.ParsedResults.length > 0) {
         const text = resp.data.ParsedResults[0].ParsedText;

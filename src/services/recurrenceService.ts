@@ -1,7 +1,22 @@
 import { getSupabase } from '../db';
 
+interface RecurrenceRow {
+  id: string;
+  user_id: string;
+  amount: number;
+  description: string;
+  type: 'expense' | 'income';
+  interval_value: number | null;
+  interval_unit: 'day' | 'week' | 'month' | null;
+  start_date: string;
+  end_date: string | null;
+  cron_expression: string | null;
+  active: boolean;
+  created_at: string;
+}
+
 export class RecurrenceService {
-  async create(userId: string, amount: number, description: string, type: 'expense' | 'income', intervalValue?: number, intervalUnit?: 'day' | 'week' | 'month', startDate?: string, endDate?: string, cronExpression?: string) {
+  async create(userId: string, amount: number, description: string, type: 'expense' | 'income', intervalValue?: number, intervalUnit?: 'day' | 'week' | 'month', startDate?: string, endDate?: string, cronExpression?: string): Promise<RecurrenceRow> {
     const supabase = getSupabase();
     const { data, error } = await supabase
       .from('recurrences')

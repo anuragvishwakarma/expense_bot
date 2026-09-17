@@ -1,7 +1,7 @@
 import { UserService } from '../../src/services/userService';
 
 // Mock the supabase client for testing
-jest.mock('../../src/src/db', () => ({
+jest.mock('../../src/db', () => ({
   getSupabase: () => ({
     from: jest.fn().mockReturnThis(),
     select: jest.fn().mockReturnThis(),

@@ -1,10 +1,12 @@
+"use client"
+
 import { useState } from 'react'
 
 export default function TransactionFilters({
   onChange,
 }: {
   onChange: (filters: { startDate: string | null; endDate: string | null }) => void
-}) {
+}): React.ReactElement {
   const [startDate, setStartDate] = useState<string | null>(null)
   const [endDate, setEndDate] = useState<string | null>(null)
 

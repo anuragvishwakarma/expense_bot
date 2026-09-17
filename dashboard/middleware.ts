@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { createServerClient, parse } from '@supabase/ssr'
+import { createServerClient } from '@supabase/ssr'
 
 const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL!
 const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
@@ -9,23 +9,26 @@ const publicRoutes = ['/login']
 export async function middleware(request: NextRequest) {
   const pathname = request.nextUrl.pathname
 
-  // Allow public routes
-  if (publicRoutes.includes(pathname)) {
+  // Skip middleware for public routes and static assets
+  if (publicRoutes.includes(pathname) || pathname.startsWith('/_next') || pathname.startsWith('/favicon')) {
     return NextResponse.next()
   }
 
   try {
-    // Parse cookies from request
-    const cookies = parse(request.headers.get('cookie') ?? '')
+    // response starts as a pass-through; setAll below replaces it with one
+    // carrying any refreshed session cookies (mirrors Supabase's documented
+    // Next.js middleware pattern so getUser()'s token refresh isn't dropped)
+    let response = NextResponse.next({ request })
 
-    // Create Supabase server client to validate session
     const supabase = createServerClient(supabaseUrl, supabaseAnonKey, {
       cookies: {
-        getAll() {
-          return Object.entries(cookies).map(([name, value]) => ({ name, value }))
-        },
-        setAll(cookiesToSet: any) {
-          // Cookies are set in response below if needed
+        getAll: () => request.cookies.getAll(),
+        setAll: (cookiesToSet) => {
+          for (const { name, value } of cookiesToSet) request.cookies.set(name, value)
+          response = NextResponse.next({ request })
+          for (const { name, value, options } of cookiesToSet) {
+            response.cookies.set(name, value, options)
+          }
         },
       },
     })
@@ -38,26 +41,33 @@ export async function middleware(request: NextRequest) {
 
     if (error || !user) {
       // Session invalid or expired, redirect to login
-      const response = NextResponse.redirect(new URL('/login', request.url))
-      response.cookies.delete('sb-access-token')
-      response.cookies.delete('sb-refresh-token')
-      return response
+      const redirect = NextResponse.redirect(new URL('/login', request.url))
+      for (const { name } of request.cookies.getAll()) {
+        if (name.startsWith('sb-') && name.includes('auth-token')) {
+          redirect.cookies.delete(name)
+        }
+      }
+      return redirect
     }
 
     // Session valid, continue with user info in headers
-    const response = NextResponse.next()
     response.headers.set('x-user-id', user.id)
 
     return response
   } catch (error) {
     // Any error validating session, redirect to login
     const response = NextResponse.redirect(new URL('/login', request.url))
-    response.cookies.delete('sb-access-token')
-    response.cookies.delete('sb-refresh-token')
+    for (const { name } of request.cookies.getAll()) {
+      if (name.startsWith('sb-') && name.includes('auth-token')) {
+        response.cookies.delete(name)
+      }
+    }
     return response
   }
 }
 
 export const config = {
-  matcher: ['/((?!_next/static|_next/image|favicon.ico|login).*)'],
+  matcher: [
+    '/((?!_next|login|favicon|static|public|api).*)',
+  ],
 }

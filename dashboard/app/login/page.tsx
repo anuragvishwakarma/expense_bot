@@ -2,12 +2,6 @@
 
 import { useState } from 'react'
 import { useRouter } from 'next/navigation'
-import { createClient } from '@supabase/supabase-js'
-
-const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL!
-const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
-
-const supabase = createClient(supabaseUrl, supabaseAnonKey)
 
 export default function LoginPage() {
   const router = useRouter()
@@ -17,26 +11,37 @@ export default function LoginPage() {
   const [loading, setLoading] = useState(false)
 
   const handleSignIn = async (e: React.FormEvent) => {
+    console.log('=== handleSignIn START ===')
     e.preventDefault()
+    console.log('After preventDefault')
     setError(null)
     setLoading(true)
 
     try {
-      const { data, error } = await supabase.auth.signInWithPassword({
-        email,
-        password,
+      console.log('Calling API login route')
+      const res = await fetch('/api/auth/login', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        credentials: 'include',
+        body: JSON.stringify({ email, password }),
       })
+      console.log('API response status:', res.status)
+      
+      const data = await res.json()
+      console.log('API response data:', { hasUser: !!data.user, hasError: !!data.error })
 
-      if (error) {
-        setError(error.message)
+      if (data.error) {
+        console.log('API error:', data.error)
+        setError(data.error)
         return
       }
 
-      if (data.session) {
-        // Session created, redirect to home
-        router.push('/')
-      }
+      console.log('Login successful, redirecting')
+      // Session created, redirect to home
+      router.push('/')
+      router.refresh()
     } catch (err) {
+      console.log('Catch error:', err)
       setError(err instanceof Error ? err.message : 'Sign in failed')
     } finally {
       setLoading(false)
@@ -49,7 +54,7 @@ export default function LoginPage() {
         <div className="p-8">
           <h1 className="text-2xl font-bold text-center mb-8">Expense Bot Dashboard</h1>
 
-          <form onSubmit={handleSignIn} className="space-y-6">
+          <form onSubmit={handleSignIn} className="space-y-6" noValidate>
             {error && (
               <div className="p-3 bg-red-50 border border-red-200 rounded text-red-700 text-sm">
                 {error}

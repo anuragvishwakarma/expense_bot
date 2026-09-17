@@ -1,7 +1,7 @@
 -- Create goals table
 create table if not exists public.goals (
   id uuid default uuid_generate_v4() primary key,
-  user_id uuid references auth.users not null,
+  user_id uuid references public.users(id) not null,
   name text not null,
   target_amount numeric(10,2) not null check (target_amount > 0),
   saved_amount numeric(10,2) default 0 not null check (saved_amount >= 0),

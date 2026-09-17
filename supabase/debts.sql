@@ -1,7 +1,7 @@
 -- Create debts table
 create table if not exists public.debts (
   id uuid default uuid_generate_v4() primary key,
-  user_id uuid references auth.users not null,
+  user_id uuid references public.users(id) not null,
   counterparty text not null, -- name or identifier of the other person
   amount numeric(10,2) not null check (amount > 0),
   type text not null check (type in ('lend', 'borrow')), -- lend: user lent money to counterparty, borrow: user borrowed from counterparty

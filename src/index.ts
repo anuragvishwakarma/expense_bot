@@ -40,7 +40,7 @@ const ocrService = new OCRService();
 const bot = new Telegraf<BotContext>(process.env.TELEGRAM_BOT_TOKEN || '');
 const supabase = createClient(
   process.env.SUPABASE_URL || '',
-  process.env.SUPABASE_ANON_KEY || ''
+  process.env.SUPABASE_SERVICE_ROLE_KEY || ''
 );
 const userService = new UserService();
 const transactionService = new TransactionService();
@@ -58,10 +58,14 @@ const pendingOCR = new Map<string, {amount: number; description: string; date: s
 const voicePending = new Map<string, string>();
 
 // Initialize Supabase in service
-initSupabase(process.env.SUPABASE_URL || '', process.env.SUPABASE_ANON_KEY || '');
+initSupabase(process.env.SUPABASE_URL || '', process.env.SUPABASE_SERVICE_ROLE_KEY || '');
 
 // Session middleware
-bot.use(session());
+bot.use(session({
+  defaultSession() {
+    return { user: null };
+  }
+}));
 
 // Start background worker for recurrences and reminders
 startWorker(bot as unknown as Telegraf<Context>);
@@ -118,15 +122,15 @@ bot.command('add', async (ctx) => {
 });
 
 // Add income command (using + prefix or /income)
-bot.on('text', async (ctx) => {
-  if (!ctx.session.user) return;
+bot.on('text', async (ctx, next) => {
+  if (!ctx.session.user) return next();
 
   const text = ctx.message.text.trim();
 
   // Handle + income format
   if (text.startsWith('+')) {
     const amountText = text.substring(1).trim();
-    if (!amountText) return;
+    if (!amountText) return next();
 
     try {
       const transaction = await transactionService.addTransaction(
@@ -140,7 +144,10 @@ bot.on('text', async (ctx) => {
       console.error('Add income error:', error);
       ctx.reply(`❌ Error: ${error instanceof Error ? error instanceof Error ? error.message : "Unknown error" : 'Unknown error'}`);
     }
+    return;
   }
+
+  return next();
 });
 
 // Income command alternative
@@ -725,7 +732,7 @@ bot.command('account', async (ctx) => {
   if (!ctx.session.user) {
     return ctx.reply('Please start the bot first with /start');
   }
-  const text = ctx.message.text.substring(8).trim(); // remove '/account '
+  const text = ctx.message.text.substring(9).trim(); // remove '/account '
   const parts = text.split(' ');
   const subcmd = parts[0];
 

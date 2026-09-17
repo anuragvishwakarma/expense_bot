@@ -1,7 +1,7 @@
 -- Create accounts table
 create table if not exists public.accounts (
   id uuid default uuid_generate_v4() primary key,
-  user_id uuid references auth.users not null,
+  user_id uuid references public.users(id) not null,
   name text not null,
   type text not null check (type in ('checking', 'savings', 'credit', 'cash', 'investment', 'other')),
   currency_code char(3) not null default 'INR',

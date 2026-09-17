@@ -11,7 +11,7 @@ export function startWorker(bot: Telegraf<Context>) {
   const transactionService = new TransactionService();
   const reminderService = new ReminderService();
   const userService = new UserService();
-  initSupabase(process.env.SUPABASE_URL || '', process.env.SUPABASE_ANON_KEY || '');
+  initSupabase(process.env.SUPABASE_URL || '', process.env.SUPABASE_SERVICE_ROLE_KEY || '');
 
   // Run every minute
   cron.schedule('* * * * *', async () => {

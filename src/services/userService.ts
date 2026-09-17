@@ -56,7 +56,7 @@ export class UserService {
 
     if (!findError && existingUser) {
       // Update user info if changed
-      const { data: updatedUser, error: updateError } = await supabase
+      const { error: updateError } = await supabase
         .from('users')
         .update({
           username: telegramUser.username,
@@ -64,25 +64,33 @@ export class UserService {
           last_name: telegramUser.last_name,
           updated_at: new Date().toISOString()
         })
-        .eq('id', existingUser.id)
-        .single<UserRow>();
+        .eq('id', existingUser.id);
 
       if (updateError) throw updateError;
-      return updatedUser;
+      return existingUser;
     }
 
     // Create new user
-    const { data: newUser, error: createError } = await supabase
+    const { error: createError } = await supabase
       .from('users')
       .insert({
         telegram_id: telegramUser.id,
         username: telegramUser.username,
         first_name: telegramUser.first_name,
         last_name: telegramUser.last_name
-      })
-      .single<UserRow>();
+      });
 
     if (createError) throw createError;
+
+    // Fetch created user
+    const { data: newUser, error: fetchError } = await supabase
+      .from('users')
+      .select('*')
+      .eq('telegram_id', telegramUser.id)
+      .single<UserRow>();
+
+    if (fetchError) throw fetchError;
+    if (!newUser) throw new Error('Failed to retrieve created user');
 
     // Create default categories for new user
     await createDefaultCategories(newUser.id);

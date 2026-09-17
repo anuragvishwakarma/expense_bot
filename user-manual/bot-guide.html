@@ -1,0 +1,578 @@
+<title>Expense Tracker Bot</title>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,500;9..144,600&family=IBM+Plex+Sans:wght@400;500;600&family=IBM+Plex+Mono:wght@400;500&display=swap">
+<style>
+  :root {
+    --paper: #F4F5F7;
+    --ink: #1C2333;
+    --ink-soft: #5B6472;
+    --card: #FFFFFF;
+    --border: #DDE1E6;
+    --teal: #1F6F63;
+    --teal-soft: #E4F1EE;
+    --red: #A3352A;
+    --red-soft: #F7EAE8;
+    --bot-bubble: #FFFFFF;
+    --user-bubble: #E4F1EE;
+    --code-bg: #EBEDF0;
+    --shadow: 0 1px 2px rgba(28,35,51,.04);
+  }
+  @media (prefers-color-scheme: dark) {
+    :root:not([data-theme="light"]) {
+      --paper: #14181F;
+      --ink: #E7E9EC;
+      --ink-soft: #9AA3B2;
+      --card: #1C2333;
+      --border: #2A3348;
+      --teal: #2E9384;
+      --teal-soft: #1E2E32;
+      --red: #D97C6E;
+      --red-soft: #33221F;
+      --bot-bubble: #1C2333;
+      --user-bubble: #1E2E32;
+      --code-bg: #232B3D;
+      --shadow: 0 1px 2px rgba(0,0,0,.3);
+    }
+  }
+  :root[data-theme="dark"] {
+    --paper: #14181F;
+    --ink: #E7E9EC;
+    --ink-soft: #9AA3B2;
+    --card: #1C2333;
+    --border: #2A3348;
+    --teal: #2E9384;
+    --teal-soft: #1E2E32;
+    --red: #D97C6E;
+    --red-soft: #33221F;
+    --bot-bubble: #1C2333;
+    --user-bubble: #1E2E32;
+    --code-bg: #232B3D;
+    --shadow: 0 1px 2px rgba(0,0,0,.3);
+  }
+
+  * { box-sizing: border-box; }
+  body {
+    background: var(--paper);
+    color: var(--ink);
+    font-family: "IBM Plex Sans", ui-sans-serif, system-ui, sans-serif;
+    line-height: 1.55;
+    padding: 0 16px;
+  }
+  h1, h2, h3 { font-family: "Fraunces", Georgia, serif; text-wrap: balance; color: var(--ink); }
+  code, .mono { font-family: "IBM Plex Mono", ui-monospace, "SF Mono", monospace; }
+
+  a { color: var(--teal); }
+
+  .shell {
+    max-width: 1180px;
+    margin: 0 auto;
+    display: grid;
+    grid-template-columns: 220px minmax(0,1fr);
+    gap: 48px;
+    padding-block: 40px 80px;
+  }
+  @media (max-width: 860px) {
+    .shell { grid-template-columns: 1fr; gap: 0; }
+  }
+
+  /* ---- side nav ---- */
+  nav.toc {
+    position: sticky;
+    top: 24px;
+    align-self: start;
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+    font-size: 13.5px;
+  }
+  nav.toc a {
+    color: var(--ink-soft);
+    text-decoration: none;
+    padding: 6px 10px;
+    border-radius: 6px;
+    border-left: 2px solid transparent;
+  }
+  nav.toc a:hover { color: var(--ink); background: var(--code-bg); }
+  nav.toc .toc-label {
+    font-size: 11px;
+    color: var(--ink-soft);
+    padding: 14px 10px 4px;
+    letter-spacing: .02em;
+  }
+  nav.toc .toc-label:first-child { padding-top: 0; }
+  @media (max-width: 860px) {
+    nav.toc {
+      position: sticky;
+      top: 0;
+      z-index: 5;
+      flex-direction: row;
+      overflow-x: auto;
+      gap: 6px;
+      background: var(--paper);
+      padding-block: 10px;
+      border-bottom: 1px solid var(--border);
+      margin-bottom: 8px;
+    }
+    nav.toc .toc-label { display: none; }
+    nav.toc a {
+      white-space: nowrap;
+      border: 1px solid var(--border);
+      border-radius: 999px;
+      padding: 5px 12px;
+    }
+  }
+
+  /* ---- hero ---- */
+  .hero { padding-top: 8px; margin-bottom: 28px; }
+  .hero h1 { font-size: clamp(32px, 5vw, 44px); font-weight: 600; margin: 0 0 10px; }
+  .hero .lede { font-size: 17px; color: var(--ink-soft); max-width: 62ch; margin: 0; }
+  .hero .meta {
+    display: flex; gap: 18px; flex-wrap: wrap;
+    margin-top: 18px; font-size: 13px; color: var(--ink-soft);
+  }
+  .hero .meta span { display: flex; align-items: center; gap: 6px; }
+  .hero .meta b { color: var(--ink); font-weight: 600; }
+
+  /* ---- callout ---- */
+  .callout {
+    background: var(--red-soft);
+    border: 1px solid color-mix(in oklab, var(--red) 30%, var(--border));
+    border-radius: 10px;
+    padding: 22px 24px;
+    margin-bottom: 40px;
+  }
+  .callout h2 {
+    font-size: 18px; margin: 0 0 8px; color: var(--red);
+    font-family: "IBM Plex Sans", sans-serif; font-weight: 600;
+  }
+  .callout p { margin: 0 0 14px; color: var(--ink); font-size: 14.5px; }
+  .callout p:last-of-type { margin-bottom: 0; }
+  ol.steps {
+    list-style: none; counter-reset: step; margin: 14px 0 0; padding: 0;
+    display: grid; gap: 10px;
+  }
+  ol.steps li {
+    counter-increment: step;
+    display: grid; grid-template-columns: 26px 1fr; gap: 12px;
+    font-size: 14.5px;
+  }
+  ol.steps li::before {
+    content: counter(step);
+    width: 26px; height: 26px; border-radius: 999px;
+    background: var(--red); color: white;
+    display: flex; align-items: center; justify-content: center;
+    font-size: 13px; font-weight: 600; font-family: "IBM Plex Sans", sans-serif;
+  }
+  ol.steps code { background: var(--card); }
+
+  /* ---- category sections ---- */
+  section.category { margin-bottom: 52px; scroll-margin-top: 20px; }
+  section.category > h2 {
+    font-size: 22px; font-weight: 600; margin: 0 0 4px;
+    display: flex; align-items: baseline; gap: 10px;
+  }
+  section.category > .cat-note {
+    color: var(--ink-soft); font-size: 14px; margin: 0 0 20px; max-width: 68ch;
+  }
+
+  article.cmd {
+    background: var(--card);
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    box-shadow: var(--shadow);
+    padding: 20px 22px;
+    margin-bottom: 16px;
+  }
+  article.cmd h3 {
+    font-family: "IBM Plex Mono", monospace;
+    font-size: 14.5px;
+    font-weight: 500;
+    background: var(--code-bg);
+    color: var(--ink);
+    display: inline-block;
+    padding: 5px 10px;
+    border-radius: 6px;
+    margin: 0 0 10px;
+  }
+  article.cmd .purpose { margin: 0 0 14px; font-size: 14.5px; color: var(--ink-soft); }
+  article.cmd .precondition {
+    font-size: 12.5px; color: var(--red);
+    margin: -8px 0 14px;
+  }
+
+  .exchange { display: flex; flex-direction: column; gap: 6px; max-width: 480px; }
+  .bubble {
+    padding: 9px 13px;
+    border-radius: 14px;
+    font-size: 13.5px;
+    line-height: 1.5;
+    width: fit-content;
+    max-width: 100%;
+  }
+  .bubble.user {
+    background: var(--user-bubble);
+    color: var(--ink);
+    align-self: flex-end;
+    border-bottom-right-radius: 4px;
+    font-family: "IBM Plex Mono", monospace;
+    font-size: 13px;
+  }
+  .bubble.bot {
+    background: var(--bot-bubble);
+    border: 1px solid var(--border);
+    color: var(--ink);
+    align-self: flex-start;
+    border-bottom-left-radius: 4px;
+  }
+
+  /* multi-turn ocr/voice cards */
+  .flow-note {
+    display: flex; gap: 10px; align-items: flex-start;
+    background: var(--teal-soft); border: 1px solid color-mix(in oklab, var(--teal) 25%, var(--border));
+    border-radius: 8px; padding: 12px 14px; font-size: 13.5px; margin-top: 14px;
+  }
+  .flow-note b { color: var(--teal); }
+
+  .btn-row { display: flex; gap: 8px; margin-top: 8px; }
+  .fake-btn {
+    font-size: 12.5px; padding: 6px 12px; border-radius: 6px;
+    border: 1px solid var(--border); background: var(--card); color: var(--ink-soft);
+  }
+
+  table.args {
+    width: 100%; border-collapse: collapse; font-size: 13px; margin: 4px 0 16px;
+  }
+  table.args th, table.args td {
+    text-align: left; padding: 6px 10px; border-bottom: 1px solid var(--border);
+  }
+  table.args th { color: var(--ink-soft); font-weight: 500; }
+  table.args td code { background: var(--code-bg); padding: 1px 5px; border-radius: 4px; font-size: 12px; }
+
+  /* ---- footer notes ---- */
+  .notes {
+    border-top: 1px solid var(--border);
+    padding-top: 28px;
+    margin-top: 12px;
+  }
+  .notes h2 { font-size: 20px; margin: 0 0 14px; }
+  .notes ul { padding-left: 0; list-style: none; display: grid; gap: 12px; }
+  .notes li {
+    display: grid; grid-template-columns: 20px 1fr; gap: 10px;
+    font-size: 14px; color: var(--ink-soft);
+  }
+  .notes li::before { content: "—"; color: var(--ink-soft); }
+  .notes li b { color: var(--ink); font-weight: 600; }
+
+  .badge {
+    font-size: 11px; font-weight: 500; padding: 2px 8px; border-radius: 999px;
+    background: var(--teal-soft); color: var(--teal); margin-left: 8px;
+    font-family: "IBM Plex Sans", sans-serif; vertical-align: middle;
+  }
+</style>
+
+<div class="shell">
+  <nav class="toc">
+    <a href="#start-here" class="toc-label">Start here</a>
+    <a href="#getting-started">Getting started</a>
+    <a href="#accounts">Accounts</a>
+    <a href="#money">Expenses &amp; income</a>
+    <a href="#reports">Reports &amp; export</a>
+    <a href="#budgets">Budgets</a>
+    <a href="#recurring">Recurring</a>
+    <a href="#reminders">Reminders</a>
+    <a href="#goals">Goals</a>
+    <a href="#debts">Debts</a>
+    <a href="#ocr-voice">Photo &amp; voice</a>
+    <a href="#good-to-know">Good to know</a>
+  </nav>
+
+  <div class="content">
+    <header class="hero">
+      <h1>Expense Tracker Bot</h1>
+      <p class="lede">A Telegram bot for tracking money by text: expenses, income, budgets, recurring bills, goals, debts — even a photo of a receipt or a voice note. This is the full command set, in the order you'll actually need it.</p>
+      <div class="meta">
+        <span>🤖 <b>Platform:</b> Telegram DM</span>
+        <span>⌨️ <b>No command-menu autocomplete</b> — type commands in full</span>
+        <span>💱 <b>Default currency:</b> ₹ INR</span>
+      </div>
+    </header>
+
+    <section class="callout" id="start-here">
+      <h2>⚠ Start here — the bot's own /help leaves this out</h2>
+      <p>Every money command needs an <b>account</b> to already exist. Try <code>/add 500 lunch</code> before creating one, and it fails with <em>"No account found for user."</em> The bot's help text shows <code>/add</code> like it works immediately after <code>/start</code> — it doesn't. Do this instead:</p>
+      <ol class="steps">
+        <li>Send the bot <b>any message</b> (or <code>/start</code>). This silently creates your account and seeds 11 default categories — nothing else works before this.</li>
+        <li>Create an account: <code>/account add Wallet cash</code>. Every command below acts on your <b>oldest account</b> automatically — there's no way to pick a different one per-command.</li>
+        <li>Now <code>/add 500 lunch</code> works. Everything from here on is optional, in any order.</li>
+      </ol>
+    </section>
+
+    <section class="category" id="getting-started">
+      <h2>Getting started</h2>
+      <p class="cat-note">The bare minimum to exist as a user.</p>
+
+      <article class="cmd">
+        <h3>/start</h3>
+        <p class="purpose">Registers you and seeds 11 default categories (Food &amp; Dining, Transportation, Shopping, Entertainment, Bills &amp; Utilities, Healthcare, Education — expense; Salary, Freelance, Investment, Other Income — income). Safe to send again, it won't duplicate anything.</p>
+        <div class="exchange">
+          <div class="bubble user">/start</div>
+          <div class="bubble bot">Welcome to Expense Tracker Bot! Use /help to see available commands.</div>
+        </div>
+      </article>
+
+      <article class="cmd">
+        <h3>/help</h3>
+        <p class="purpose">Bot's built-in command reference. Treat this page as the complete version — the in-bot one is missing several commands and doesn't mention photo or voice input.</p>
+      </article>
+    </section>
+
+    <section class="category" id="accounts">
+      <h2>Accounts <span class="badge">do this first</span></h2>
+      <p class="cat-note">Every transaction, recurrence, and report reads or writes against an account. You need at least one before anything money-related works.</p>
+
+      <article class="cmd">
+        <h3>/account add &lt;name&gt; &lt;type&gt; [currency] [balance]</h3>
+        <p class="purpose">Creates an account. Currency defaults to INR, starting balance to 0.</p>
+        <table class="args">
+          <tr><th>type</th><td><code>checking</code> · <code>savings</code> · <code>credit</code> · <code>cash</code> · <code>investment</code> · <code>other</code></td></tr>
+        </table>
+        <div class="exchange">
+          <div class="bubble user">/account add Wallet cash</div>
+          <div class="bubble bot">✅ Account created!<br>Name: Wallet<br>Type: cash<br>Currency: INR<br>Balance: ₹0.00</div>
+        </div>
+      </article>
+
+      <article class="cmd">
+        <h3>/account list</h3>
+        <p class="purpose">Lists every account and its current balance.</p>
+        <div class="exchange">
+          <div class="bubble user">/account list</div>
+          <div class="bubble bot">💳 Your accounts:<br>• Wallet (cash) [INR]<br>&nbsp;&nbsp;Balance: 0.00</div>
+        </div>
+      </article>
+
+      <article class="cmd">
+        <h3>/account transfer &lt;from_id&gt; &lt;to_id&gt; &lt;amount&gt;</h3>
+        <p class="purpose">Moves money between two of your own accounts. Balance-checked — fails if the source can't cover it.</p>
+        <div class="exchange">
+          <div class="bubble user">/account transfer 1 2 500</div>
+          <div class="bubble bot">✅ Transfer complete!<br>Wallet → Bank: ₹500.00</div>
+        </div>
+      </article>
+
+      <article class="cmd">
+        <h3>/account delete &lt;account_id&gt;</h3>
+        <p class="purpose">Deletes an account. Get the id from <code>/account list</code>.</p>
+        <div class="exchange">
+          <div class="bubble user">/account delete 2</div>
+          <div class="bubble bot">🗑️ Account deleted.</div>
+        </div>
+      </article>
+    </section>
+
+    <section class="category" id="money">
+      <h2>Expenses &amp; income</h2>
+      <p class="cat-note">The daily-use commands. All three accept flexible amount formats — see the note below.</p>
+
+      <article class="cmd">
+        <h3>/add &lt;amount&gt; &lt;description&gt;</h3>
+        <p class="purpose">Records an expense against your default (oldest) account.</p>
+        <div class="exchange">
+          <div class="bubble user">/add 500 lunch</div>
+          <div class="bubble bot">✅ Expense recorded!<br>Amount: ₹500<br>Description: lunch</div>
+        </div>
+      </article>
+
+      <article class="cmd">
+        <h3>+&lt;amount&gt; &lt;description&gt;</h3>
+        <p class="purpose">Income shorthand — no slash. Fastest way to log income on the fly.</p>
+        <div class="exchange">
+          <div class="bubble user">+1000 freelance payment</div>
+          <div class="bubble bot">✅ Income recorded!<br>Amount: ₹1000<br>Description: freelance payment</div>
+        </div>
+      </article>
+
+      <article class="cmd">
+        <h3>/income &lt;amount&gt; &lt;description&gt;</h3>
+        <p class="purpose">Same as <code>+</code>, spelled out — identical result.</p>
+        <div class="exchange">
+          <div class="bubble user">/income 2000 salary</div>
+          <div class="bubble bot">✅ Income recorded!<br>Amount: ₹2000<br>Description: salary</div>
+        </div>
+      </article>
+
+      <div class="flow-note">
+        <span>💡</span>
+        <span><b>Amount formats accepted:</b> <code>500</code>, <code>₹500</code>, <code>50 USD</code>, <code>50$</code>, <code>1,000</code> (commas OK). Bare numbers default to INR. Without a currency-conversion key configured on the server, non-INR amounts are stored at face value — no real exchange-rate math happens.</span>
+      </div>
+    </section>
+
+    <section class="category" id="reports">
+      <h2>Reports &amp; export</h2>
+      <article class="cmd">
+        <h3>/today</h3>
+        <p class="purpose">Today's income, expense, and net — broken down by category.</p>
+      </article>
+      <article class="cmd">
+        <h3>/monthly [month] [year]</h3>
+        <p class="purpose">Monthly summary: totals, top-5 expense categories, transaction count. Defaults to the current month.</p>
+        <div class="exchange">
+          <div class="bubble user">/monthly 8 2026</div>
+        </div>
+      </article>
+      <article class="cmd">
+        <h3>/export [start-date] [end-date]</h3>
+        <p class="purpose">Sends a CSV file of your transactions as a Telegram document. Dates as <code>YYYY-MM-DD</code>; defaults to today.</p>
+        <div class="exchange">
+          <div class="bubble user">/export 2026-09-01 2026-09-30</div>
+        </div>
+      </article>
+    </section>
+
+    <section class="category" id="budgets">
+      <h2>Budgets</h2>
+      <article class="cmd">
+        <h3>/budget &lt;category&gt; &lt;amount&gt; &lt;month&gt; &lt;year&gt;</h3>
+        <p class="purpose">Sets a monthly spending cap for one category.</p>
+        <div class="exchange">
+          <div class="bubble user">/budget Food 5000 9 2026</div>
+        </div>
+      </article>
+      <article class="cmd">
+        <h3>/budgetstatus [month] [year]</h3>
+        <p class="purpose">Shows every budgeted category against actual spend, color-coded 🟢 under, 🟡 close, 🔴 over.</p>
+      </article>
+    </section>
+
+    <section class="category" id="recurring">
+      <h2>Recurring transactions</h2>
+      <p class="cat-note">A background worker checks every minute and auto-posts anything due — as a real transaction against your default account.</p>
+      <article class="cmd">
+        <h3>/recur add &lt;amount&gt; &lt;description&gt; &lt;expense|income&gt; every &lt;n&gt; &lt;day|week|month&gt; [start] [end]</h3>
+        <p class="purpose">Schedules a repeating transaction. Swap <code>every &lt;n&gt; &lt;unit&gt;</code> for <code>cron &lt;expression&gt;</code> if you need finer control.</p>
+        <div class="exchange">
+          <div class="bubble user">/recur add 1200 rent expense every 1 month</div>
+        </div>
+      </article>
+      <article class="cmd">
+        <h3>/recur list</h3>
+        <p class="purpose">Shows every active recurrence and its next run.</p>
+      </article>
+      <article class="cmd">
+        <h3>/recur delete &lt;id&gt;</h3>
+        <p class="purpose">Cancels a recurrence.</p>
+      </article>
+    </section>
+
+    <section class="category" id="reminders">
+      <h2>Reminders</h2>
+      <article class="cmd">
+        <h3>/reminder on [HH:MM]</h3>
+        <p class="purpose">Daily nudge to log expenses. 24-hour time, defaults to <code>21:00</code>.</p>
+        <div class="exchange">
+          <div class="bubble user">/reminder on 20:30</div>
+        </div>
+        <div class="flow-note">
+          <span>⏰</span>
+          <span>What you get, daily: <i>"Reminder: It's time to log yesterday's expenses. Use /add or + to record income/expenses."</i></span>
+        </div>
+      </article>
+      <article class="cmd">
+        <h3>/reminder off</h3>
+        <p class="purpose">Turns the daily nudge off.</p>
+      </article>
+    </section>
+
+    <section class="category" id="goals">
+      <h2>Goals</h2>
+      <article class="cmd">
+        <h3>/goal set &lt;name&gt; &lt;target_amount&gt;</h3>
+        <p class="purpose">Creates a savings goal.</p>
+        <div class="exchange"><div class="bubble user">/goal set Vacation 50000</div></div>
+      </article>
+      <article class="cmd">
+        <h3>/goal list</h3>
+        <p class="purpose">Shows every goal with % progress toward target.</p>
+      </article>
+      <article class="cmd">
+        <h3>/goal progress &lt;goal_id&gt; &lt;amount&gt;</h3>
+        <p class="purpose">Adds an amount toward a goal's saved total.</p>
+        <div class="exchange"><div class="bubble user">/goal progress 1 5000</div></div>
+      </article>
+      <article class="cmd">
+        <h3>/goal delete &lt;goal_id&gt;</h3>
+        <p class="purpose">Removes a goal.</p>
+      </article>
+    </section>
+
+    <section class="category" id="debts">
+      <h2>Debts</h2>
+      <p class="cat-note">Tracks money owed between you and other people — separate from your account balances.</p>
+      <article class="cmd">
+        <h3>/debt lend &lt;person&gt; &lt;amount&gt; [note]</h3>
+        <p class="purpose">Records money you lent out.</p>
+        <div class="exchange"><div class="bubble user">/debt lend Raj 2000 movie tickets</div></div>
+      </article>
+      <article class="cmd">
+        <h3>/debt borrow &lt;person&gt; &lt;amount&gt; [note]</h3>
+        <p class="purpose">Records money you borrowed.</p>
+      </article>
+      <article class="cmd">
+        <h3>/debt settle &lt;id&gt; &lt;amount&gt;</h3>
+        <p class="purpose">Pays down a debt — partial amounts are tracked, so you can settle in installments.</p>
+      </article>
+      <article class="cmd">
+        <h3>/debt list</h3>
+        <p class="purpose">Every open debt, ⏳ outstanding or ✅ settled.</p>
+      </article>
+      <article class="cmd">
+        <h3>/debt delete &lt;id&gt;</h3>
+        <p class="purpose">Removes a debt record entirely.</p>
+      </article>
+    </section>
+
+    <section class="category" id="ocr-voice">
+      <h2>Photo &amp; voice input</h2>
+      <p class="cat-note">Not slash commands — just send the bot media directly. Both end the same way: a confirmation card you approve before anything is saved.</p>
+
+      <article class="cmd">
+        <h3>📷 Send a photo of a receipt</h3>
+        <p class="purpose">OCR reads the amount, date, and a description guess off the receipt. Always saved as an <b>expense</b>.</p>
+        <div class="exchange">
+          <div class="bubble bot">🧾 OCR Result<br>Amount: ₹1,234.50<br>Save this expense?</div>
+        </div>
+        <div class="btn-row">
+          <span class="fake-btn">✅ Yes, save</span>
+          <span class="fake-btn">❌ No, cancel</span>
+        </div>
+      </article>
+
+      <article class="cmd">
+        <h3>🎙️ Send a voice note</h3>
+        <p class="purpose">Transcribed automatically. Say a number that starts with "plus" or write <code>+</code> conceptually and it's treated as income; otherwise expense.</p>
+        <div class="exchange">
+          <div class="bubble bot">🎙️ Voice Transcription<br>"500 rupees for groceries"<br>Save this as an expense?</div>
+        </div>
+        <div class="btn-row">
+          <span class="fake-btn">✅ Yes, save</span>
+          <span class="fake-btn">❌ No, cancel</span>
+        </div>
+      </article>
+
+      <div class="flow-note">
+        <span>⚠</span>
+        <span>Both are held in memory only until you tap a button. Cancel, get distracted, or the bot restarts — the pending entry is gone, nothing was saved.</span>
+      </div>
+    </section>
+
+    <section class="notes" id="good-to-know">
+      <h2>Good to know</h2>
+      <ul>
+        <li><b>No command menu.</b> There's no Telegram autocomplete list for this bot — every command has to be typed out in full, exactly as shown above.</li>
+        <li><b>"Default account" = oldest account.</b> Every command that touches money uses whichever account you created first. There's no per-command way to target a different one.</li>
+        <li><b>Categories are fixed.</b> The 11 seeded at <code>/start</code> are all you get — new transactions attach to the first existing category of matching type, nothing gets auto-created per description.</li>
+        <li><b>Currency is mostly cosmetic.</b> The bot parses <code>USD</code>/<code>$</code> amounts fine, but without a conversion key configured server-side, it stores the number as typed — 50 USD and ₹50 are stored as the same "50."</li>
+        <li><b>Recurring transactions post silently.</b> The worker runs every minute; a due recurrence just appears as a normal transaction — no message announces it.</li>
+      </ul>
+    </section>
+  </div>
+</div>

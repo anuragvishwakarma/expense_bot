@@ -1,16 +1,37 @@
-import type { NextPage } from 'next'
+import { redirect } from 'next/navigation'
 import { supabase } from '@/lib/supabase'
+import { getUserIdFromRequest } from '@/lib/auth'
 
-export const getServerSideProps = async () => {
-  // Placeholder: fetch from a goals table (not yet implemented)
-  const goals = [
-    { id: '1', name: 'Emergency Fund', target: 100000, saved: 25000 },
-    { id: '2', name: 'Vacation', target: 50000, saved: 10000 },
-  ]
-  return { props: { goals } }
+interface Goal {
+  id: string
+  name: string
+  target_amount: number
+  saved_amount: number
 }
 
-const GoalsPage: NextPage = ({ goals }) => {
+async function getGoalsData(userId: string) {
+  const { data: goals, error } = await supabase
+    .from('goals')
+    .select('*')
+    .eq('user_id', userId)
+    .order('created_at', { ascending: false })
+
+  if (error) {
+    console.error('Error fetching goals:', error)
+    return []
+  }
+
+  return (goals as Goal[]) || []
+}
+
+export default async function GoalsPage() {
+  const userId = await getUserIdFromRequest()
+
+  if (!userId) {
+    redirect('/login')
+  }
+
+  const goals = await getGoalsData(userId)
   return (
     <div className="space-y-6">
       <h1 className="text-2xl font-bold">Goals</h1>
@@ -22,13 +43,13 @@ const GoalsPage: NextPage = ({ goals }) => {
             </h3>
             <div className="w-full bg-gray-200 rounded-full h-2.5">
               <div
-                className={`bg-blue-500 h-2.5 rounded-full`}
-                style={{ width: `${Math.min((goal.saved / goal.target) * 100, 100)}%` }}
+                className="bg-blue-500 h-2.5 rounded-full"
+                style={{ width: `${Math.min((goal.saved_amount / goal.target_amount) * 100, 100)}%` }}
               />
             </div>
             <div className="flex justify-between text-xs mt-1">
-              <span>Saved: ₹{goal.saved.toFixed(2)}</span>
-              <span>Target: ₹{goal.target.toFixed(2)}</span>
+              <span>Saved: ₹{goal.saved_amount.toFixed(2)}</span>
+              <span>Target: ₹{goal.target_amount.toFixed(2)}</span>
             </div>
           </div>
         ))}
@@ -36,5 +57,3 @@ const GoalsPage: NextPage = ({ goals }) => {
     </div>
   )
 }
-
-export default GoalsPage

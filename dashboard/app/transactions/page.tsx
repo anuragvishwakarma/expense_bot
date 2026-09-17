@@ -1,42 +1,55 @@
-import type { NextPage } from 'next'
+import { redirect } from 'next/navigation'
 import { supabase } from '@/lib/supabase'
+import { getUserIdFromRequest } from '@/lib/auth'
 import TransactionFilters from '@/components/widgets/TransactionFilters'
 import TransactionsTable from '@/components/widgets/TransactionsTable'
 
-export const getServerSideProps = async (context: any) => {
-  const { query } = context
-  const startDate = query.startDate as string | null
-  const endDate = query.endDate as string | null
+interface Transaction {
+  id: string
+  amount: number
+  type: 'expense' | 'income'
+  date: string
+  description: string | null
+  category?: { name: string; icon: string } | null
+}
 
+async function getTransactionsData(userId: string, searchParams: { startDate?: string; endDate?: string }) {
   let queryBuilder = supabase
     .from('transactions')
     .select(`
       *,
       category:categories(name, icon)
     `)
+    .eq('user_id', userId)
     .order('date', { ascending: false })
 
-  if (startDate) {
-    queryBuilder = queryBuilder.gte('date', startDate)
+  if (searchParams.startDate) {
+    queryBuilder = queryBuilder.gte('date', searchParams.startDate)
   }
-  if (endDate) {
-    queryBuilder = queryBuilder.lte('date', endDate)
+  if (searchParams.endDate) {
+    queryBuilder = queryBuilder.lte('date', searchParams.endDate)
   }
 
   const { data: transactions, error } = await queryBuilder
 
   if (error) {
     console.error('Error fetching transactions:', error)
-    return { props: { transactions: [] } }
+    return []
   }
 
-  return { props: { transactions: transactions || [] } }
+  return (transactions as Transaction[]) || []
 }
 
-const TransactionsPage: NextPage = ({ transactions }) => {
+export default async function TransactionsPage({ searchParams }: { searchParams: { startDate?: string; endDate?: string } }) {
+  const userId = await getUserIdFromRequest()
+
+  if (!userId) {
+    redirect('/login')
+  }
+
+  const transactions = await getTransactionsData(userId, searchParams)
+
   const handleFilterChange = (filters: { startDate: string | null; endDate: string | null }) => {
-    // For simplicity, we'll just show an alert that filtering would work with a real router.
-    // In a full implementation, we would use next/router to update the URL and refetch.
     const params = new URLSearchParams()
     if (filters.startDate) params.set('startDate', filters.startDate)
     if (filters.endDate) params.set('endDate', filters.endDate)
@@ -51,5 +64,3 @@ const TransactionsPage: NextPage = ({ transactions }) => {
     </div>
   )
 }
-
-export default TransactionsPage

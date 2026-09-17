@@ -1,39 +1,41 @@
-import type { NextPage } from 'next'
+import { redirect } from 'next/navigation'
 import SummaryCards from '@/components/widgets/SummaryCards'
 import IncomeExpenseChart from '@/components/widgets/IncomeExpenseChart'
 import GoalsProgress from '@/components/widgets/GoalsProgress'
 import { supabase } from '@/lib/supabase'
+import { getUserIdFromRequest } from '@/lib/auth'
 
-export const getServerSideProps = async () => {
-  // Fetch transactions for the current month (for summary) and last 6 months (for chart)
+async function getDashboardData(userId: string) {
   const now = new Date()
   const startOfMonth = new Date(now.getFullYear(), now.getMonth(), 1)
   const endOfMonth = new Date(now.getFullYear(), now.getMonth() + 1, 0)
-  const sixMonthsAgo = new Date(now.getFullYear(), now.getMonth() - 5, 1) // inclusive start
+  const sixMonthsAgo = new Date(now.getFullYear(), now.getMonth() - 5, 1)
 
-  // Fetch transactions and goals in parallel
   const [transactionsResp, goalsResp] = await Promise.all([
     supabase
       .from('transactions')
       .select('amount, type, date')
+      .eq('user_id', userId)
       .gte('date', sixMonthsAgo.toISOString())
       .lte('date', now.toISOString()),
-    supabase.from('goals').select('*')
+    supabase
+      .from('goals')
+      .select('*')
+      .eq('user_id', userId)
   ])
 
   if (transactionsResp.error) {
     console.error('Error fetching transactions:', transactionsResp.error)
-    return { props: { totalIncome: 0, totalExpense: 0, net: 0, monthlyData: [], goals: [] } }
+    return { totalIncome: 0, totalExpense: 0, net: 0, monthlyData: [], goals: [] }
   }
   if (goalsResp.error) {
     console.error('Error fetching goals:', goalsResp.error)
-    return { props: { totalIncome: 0, totalExpense: 0, net: 0, monthlyData: [], goals: [] } }
+    return { totalIncome: 0, totalExpense: 0, net: 0, monthlyData: [], goals: [] }
   }
 
   const transactions = transactionsResp.data || []
   const goals = goalsResp.data || []
 
-  // Filter for current month
   const currentMonthTransactions = transactions.filter(t => {
     const date = new Date(t.date)
     return date >= startOfMonth && date <= endOfMonth
@@ -47,7 +49,6 @@ export const getServerSideProps = async () => {
     .reduce((sum, t) => sum + Number(t.amount), 0)
   const net = totalIncome - totalExpense
 
-  // Prepare monthly data for the chart (last 6 months, including current)
   const monthlyData = []
   for (let i = 5; i >= 0; i--) {
     const monthDate = new Date(now.getFullYear(), now.getMonth() - i, 1)
@@ -66,31 +67,24 @@ export const getServerSideProps = async () => {
     monthlyData.push({ month: monthName, income, expense })
   }
 
-  // Map goals to the format expected by GoalsProgress: {name, target, saved}
   const goalsForChart = goals.map(g => ({
     name: g.name,
     target: Number(g.target_amount),
     saved: Number(g.saved_amount)
   }))
 
-  return {
-    props: {
-      totalIncome,
-      totalExpense,
-      net,
-      monthlyData,
-      goals: goalsForChart
-    }
-  }
+  return { totalIncome, totalExpense, net, monthlyData, goals: goalsForChart }
 }
 
-const OverviewPage: NextPage = ({
-  totalIncome,
-  totalExpense,
-  net,
-  monthlyData,
-  goals,
-}) => {
+export default async function OverviewPage() {
+  const userId = await getUserIdFromRequest()
+
+  if (!userId) {
+    redirect('/login')
+  }
+
+  const { totalIncome, totalExpense, net, monthlyData, goals } = await getDashboardData(userId)
+
   return (
     <div className="space-y-6">
       <h1 className="text-2xl font-bold">Dashboard Overview</h1>
@@ -106,5 +100,3 @@ const OverviewPage: NextPage = ({
     </div>
   )
 }
-
-export default OverviewPage

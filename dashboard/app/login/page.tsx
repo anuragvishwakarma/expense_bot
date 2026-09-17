@@ -11,37 +11,29 @@ export default function LoginPage() {
   const [loading, setLoading] = useState(false)
 
   const handleSignIn = async (e: React.FormEvent) => {
-    console.log('=== handleSignIn START ===')
     e.preventDefault()
-    console.log('After preventDefault')
     setError(null)
     setLoading(true)
 
     try {
-      console.log('Calling API login route')
       const res = await fetch('/api/auth/login', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         credentials: 'include',
         body: JSON.stringify({ email, password }),
       })
-      console.log('API response status:', res.status)
-      
+
       const data = await res.json()
-      console.log('API response data:', { hasUser: !!data.user, hasError: !!data.error })
 
       if (data.error) {
-        console.log('API error:', data.error)
         setError(data.error)
         return
       }
 
-      console.log('Login successful, redirecting')
       // Session created, redirect to home
       router.push('/')
       router.refresh()
     } catch (err) {
-      console.log('Catch error:', err)
       setError(err instanceof Error ? err.message : 'Sign in failed')
     } finally {
       setLoading(false)

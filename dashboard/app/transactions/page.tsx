@@ -4,6 +4,8 @@ import { getUserIdFromRequest } from '@/lib/auth'
 import TransactionFilters from '@/components/widgets/TransactionFilters'
 import TransactionsTable from '@/components/widgets/TransactionsTable'
 
+export const dynamic = 'force-dynamic'
+
 interface Transaction {
   id: string
   amount: number

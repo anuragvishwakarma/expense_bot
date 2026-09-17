@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { createServerClient, serializeCookieHeader, parseCookieHeader } from '@supabase/ssr'
+import { createServerClient, parse } from '@supabase/ssr'
 
 const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL!
 const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
@@ -15,20 +15,17 @@ export async function middleware(request: NextRequest) {
   }
 
   try {
+    // Parse cookies from request
+    const cookies = parse(request.headers.get('cookie') ?? '')
+
     // Create Supabase server client to validate session
     const supabase = createServerClient(supabaseUrl, supabaseAnonKey, {
       cookies: {
         getAll() {
-          return Object.entries(parseCookieHeader(request.headers.get('cookie') ?? '')).map(
-            ([name, value]) => ({ name, value })
-          )
+          return Object.entries(cookies).map(([name, value]) => ({ name, value }))
         },
-        setAll(cookiesToSet) {
-          const response = NextResponse.next()
-          cookiesToSet.forEach(({ name, value, options }) => {
-            response.cookies.set(name, value, options)
-          })
-          return response
+        setAll(cookiesToSet: any) {
+          // Cookies are set in response below if needed
         },
       },
     })

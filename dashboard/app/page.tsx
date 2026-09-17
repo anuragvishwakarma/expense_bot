@@ -5,6 +5,8 @@ import GoalsProgress from '@/components/widgets/GoalsProgress'
 import { supabase } from '@/lib/supabase'
 import { getUserIdFromRequest } from '@/lib/auth'
 
+export const dynamic = 'force-dynamic'
+
 async function getDashboardData(userId: string) {
   const now = new Date()
   const startOfMonth = new Date(now.getFullYear(), now.getMonth(), 1)

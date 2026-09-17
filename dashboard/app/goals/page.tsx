@@ -2,6 +2,8 @@ import { redirect } from 'next/navigation'
 import { supabase } from '@/lib/supabase'
 import { getUserIdFromRequest } from '@/lib/auth'
 
+export const dynamic = 'force-dynamic'
+
 interface Goal {
   id: string
   name: string

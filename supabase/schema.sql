@@ -46,20 +46,3 @@ create table budgets (
   created_at timestamp with time zone default timezone('utc', now()) not null,
   unique(user_id, category_id, month, year)
 );
-
--- Insert default categories
-insert into categories (user_id, name, type, icon) values
--- Expense categories
-('00000000-0000-0000-0000-000000000000', 'Food & Dining', 'expense', '🍽️'),
-('00000000-0000-0000-0000-000000000000', 'Transportation', 'expense', '🚗'),
-('00000000-0000-0000-0000-000000000000', 'Shopping', 'expense', '🛍️'),
-('00000000-0000-0000-0000-000000000000', 'Entertainment', 'expense', '🎬'),
-('00000000-0000-0000-0000-000000000000', 'Bills & Utilities', 'expense', '💡'),
-('00000000-0000-0000-0000-000000000000', 'Healthcare', 'expense', '🏥'),
-('00000000-0000-0000-0000-000000000000', 'Education', 'expense', '📚'),
--- Income categories
-('00000000-0000-0000-0000-000000000000', 'Salary', 'income', '💰'),
-('00000000-0000-0000-0000-000000000000', 'Freelance', 'income', '💻'),
-('00000000-0000-0000-0000-000000000000', 'Investment', 'income', '📈'),
-('00000000-0000-0000-0000-000000000000', 'Other Income', 'income', '💵')
-on conflict do nothing;

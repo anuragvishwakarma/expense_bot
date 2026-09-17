@@ -18,7 +18,7 @@ alter table public.debts enable row level security;
 -- Create policy for users to insert their own debts
 create policy "Users can insert their own debts" on public.debts
   for insert
-  using (auth.uid() = user_id);
+  with check (auth.uid() = user_id);
 
 -- Create policy for users to select their own debts
 create policy "Users can select their own debts" on public.debts
@@ -37,4 +37,4 @@ create policy "Users can delete their own debts" on public.debts
 
 -- Trigger to set updated_at on update
 create trigger update_debts_updated_at before update on public.debts
-  for each row execute procedure moddatetime;
+  for each row execute procedure public.update_updated_at_column();

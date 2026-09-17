@@ -15,7 +15,7 @@ alter table public.goals enable row level security;
 -- Create policy for users to insert their own goals
 create policy "Users can insert their own goals" on public.goals
   for insert
-  using (auth.uid() = user_id);
+  with check (auth.uid() = user_id);
 
 -- Create policy for users to select their own goals
 create policy "Users can select their own goals" on public.goals
@@ -32,11 +32,6 @@ create policy "Users can delete their own goals" on public.goals
   for delete
   using (auth.uid() = user_id);
 
--- Allow select for all (for dashboard simplicity; not secure for multi-user)
-create policy "Allow select for all" on public.goals
-  for select
-  using (true);
-
 -- Trigger to set updated_at on update
 create trigger update_goals_updated_at before update on public.goals
-  for each row execute procedure moddatetime;
+  for each row execute procedure public.update_updated_at_column();

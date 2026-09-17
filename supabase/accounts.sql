@@ -17,7 +17,7 @@ alter table public.accounts enable row level security;
 -- Create policy for users to insert their own accounts
 create policy "Users can insert their own accounts" on public.accounts
   for insert
-  using (auth.uid() = user_id);
+  with check (auth.uid() = user_id);
 
 -- Create policy for users to select their own accounts
 create policy "Users can select their own accounts" on public.accounts
@@ -34,9 +34,18 @@ create policy "Users can delete their own accounts" on public.accounts
   for delete
   using (auth.uid() = user_id);
 
+-- Function to update updated_at timestamp
+create or replace function public.update_updated_at_column()
+returns trigger language plpgsql as $$
+begin
+  new.updated_at = now();
+  return new;
+end;
+$$;
+
 -- Trigger to set updated_at on update
 create trigger update_accounts_updated_at before update on public.accounts
-  for each row execute procedure moddatetime;
+  for each row execute procedure public.update_updated_at_column();
 
 -- Add account_id to transactions table
 alter table public.transactions add column if not exists account_id uuid references public.accounts(id);

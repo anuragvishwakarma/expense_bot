@@ -39,26 +39,39 @@ export default async function DebtsPage() {
   const debts = await getDebtsData(userId)
   return (
     <div className="space-y-6">
-      <h1 className="text-2xl font-bold">Debts</h1>
-      <div className="space-y-4">
+      <h1 className="font-heading text-2xl font-semibold text-foreground">Debts</h1>
+      <div className="space-y-3">
         {debts.map((debt) => (
-          <div key={debt.id} className="bg-white rounded-lg shadow p-4">
+          <div key={debt.id} className="rounded-lg border border-border bg-card p-4">
             <div className="flex justify-between items-start mb-2">
-              <h3 className="text-sm font-medium text-gray-500">
+              <h3 className="text-sm font-medium text-foreground">
                 {debt.counterparty}
               </h3>
-              <span className={`text-xs px-2 py-1 rounded ${debt.type === 'lend' ? 'bg-green-100 text-green-800' : 'bg-red-100 text-red-800'}`}>
+              <span
+                className={`text-xs font-medium px-2 py-0.5 rounded-full ${
+                  debt.type === 'lend'
+                    ? 'bg-accent text-accent-foreground'
+                    : 'bg-destructive/10 text-destructive'
+                }`}
+              >
                 {debt.type === 'lend' ? 'Lent' : 'Borrowed'}
               </span>
             </div>
-            <p className="mb-2">
-              Amount: <span className="font-medium">₹{debt.amount.toFixed(2)}</span>
+            <p className="mb-1 tabular-nums">
+              <span
+                className={`font-medium ${debt.type === 'lend' ? 'text-foreground' : 'text-destructive'}`}
+              >
+                ₹{debt.amount.toFixed(2)}
+              </span>
             </p>
-            <p className="text-sm text-gray-500">
-              Created: {new Date(debt.created_at).toLocaleDateString()}
+            <p className="text-sm text-muted-foreground">
+              Created {new Date(debt.created_at).toLocaleDateString()}
             </p>
           </div>
         ))}
+        {debts.length === 0 && (
+          <p className="text-sm text-muted-foreground">No open debts.</p>
+        )}
       </div>
     </div>
   )

@@ -89,13 +89,13 @@ export default async function OverviewPage() {
 
   return (
     <div className="space-y-6">
-      <h1 className="text-2xl font-bold">Dashboard Overview</h1>
+      <h1 className="font-heading text-2xl font-semibold text-foreground">Dashboard overview</h1>
       <SummaryCards
         totalIncome={totalIncome}
         totalExpense={totalExpense}
         net={net}
       />
-      <div className="grid gap-4 md:grid-cols-2">
+      <div className="grid gap-6 md:grid-cols-2">
         <IncomeExpenseChart data={monthlyData} />
         <GoalsProgress goals={goals} />
       </div>

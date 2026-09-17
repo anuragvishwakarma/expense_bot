@@ -1,31 +1,54 @@
+'use client'
+
 import Link from 'next/link'
-import { LayoutDashboard, ClipboardList, TrendingUp, Settings, LogOut } from 'lucide-react'
+import { usePathname } from 'next/navigation'
+import { cn } from 'cn'
+import { LayoutDashboard, ClipboardList, TrendingUp, HandCoins, Settings, LogOut } from 'lucide-react'
+
+const links = [
+  { href: '/', label: 'Overview', icon: LayoutDashboard },
+  { href: '/transactions', label: 'Transactions', icon: ClipboardList },
+  { href: '/goals', label: 'Goals', icon: TrendingUp },
+  { href: '/debts', label: 'Debts', icon: HandCoins },
+  { href: '/settings', label: 'Settings', icon: Settings },
+]
 
 export default function Sidebar() {
+  const pathname = usePathname()
+
   return (
-    <aside className="fixed left-0 top-0 bottom-0 w-64 bg-white shadow-xl p-4">
-      <div className="flex h-16 items-center">
-        <h2 className="text-xl font-bold">Expense Tracker</h2>
+    <aside className="fixed top-0 left-0 h-screen w-64 bg-sidebar text-sidebar-foreground flex flex-col">
+      <div className="flex h-16 items-center px-6 border-b border-sidebar-border">
+        <h2 className="font-heading text-lg font-semibold tracking-tight">
+          Expense Tracker
+        </h2>
       </div>
-      <nav className="mt-6 space-y-2">
-        <Link href="/" className="flex items-center px-3 py-2 rounded-md text-sm font-medium hover:bg-gray-100">
-          <LayoutDashboard className="mr-4 h-5 w-5" />
-          <span>Overview</span>
-        </Link>
-        <Link href="/transactions" className="flex items-center px-3 py-2 rounded-md text-sm font-medium hover:bg-gray-100">
-          <ClipboardList className="mr-4 h-5 w-5" />
-          <span>Transactions</span>
-        </Link>
-        <Link href="/goals" className="flex items-center px-3 py-2 rounded-md text-sm font-medium hover:bg-gray-100">
-          <TrendingUp className="mr-4 h-5 w-5" />
-          <span>Goals</span>
-        </Link>
-        <Link href="/settings" className="flex items-center px-3 py-2 rounded-md text-sm font-medium hover:bg-gray-100">
-          <Settings className="mr-4 h-5 w-5" />
-          <span>Settings</span>
-        </Link>
-        <Link href="/logout" className="flex items-center px-3 py-2 rounded-md text-sm font-medium hover:bg-gray-100">
-          <LogOut className="mr-4 h-5 w-5" />
+      <nav className="flex-1 flex flex-col px-3 py-4">
+        <div className="space-y-1">
+          {links.map(({ href, label, icon: Icon }) => {
+            const active = href === '/' ? pathname === '/' : pathname.startsWith(href)
+            return (
+              <Link
+                key={href}
+                href={href}
+                className={cn(
+                  'flex items-center gap-3 px-3 py-2 rounded-md text-sm font-medium transition-colors',
+                  active
+                    ? 'bg-sidebar-primary text-sidebar-primary-foreground'
+                    : 'text-sidebar-foreground/80 hover:bg-sidebar-accent hover:text-sidebar-accent-foreground'
+                )}
+              >
+                <Icon className="h-4 w-4" strokeWidth={2} />
+                <span>{label}</span>
+              </Link>
+            )
+          })}
+        </div>
+        <Link
+          href="/logout"
+          className="mt-auto flex items-center gap-3 px-3 py-2 rounded-md text-sm font-medium text-sidebar-foreground/80 hover:bg-sidebar-accent hover:text-sidebar-accent-foreground transition-colors border-t border-sidebar-border pt-4"
+        >
+          <LogOut className="h-4 w-4" strokeWidth={2} />
           <span>Logout</span>
         </Link>
       </nav>

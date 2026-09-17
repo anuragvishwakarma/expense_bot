@@ -1,3 +1,4 @@
+import { Suspense } from 'react'
 import { redirect } from 'next/navigation'
 import { supabase } from '@/lib/supabase'
 import { getUserIdFromRequest } from '@/lib/auth'
@@ -42,26 +43,25 @@ async function getTransactionsData(userId: string, searchParams: { startDate?: s
   return (transactions as Transaction[]) || []
 }
 
-export default async function TransactionsPage({ searchParams }: { searchParams: { startDate?: string; endDate?: string } }) {
+export default async function TransactionsPage({
+  searchParams,
+}: {
+  searchParams: Promise<{ startDate?: string; endDate?: string }>
+}) {
   const userId = await getUserIdFromRequest()
 
   if (!userId) {
     redirect('/login')
   }
 
-  const transactions = await getTransactionsData(userId, searchParams)
-
-  const handleFilterChange = (filters: { startDate: string | null; endDate: string | null }) => {
-    const params = new URLSearchParams()
-    if (filters.startDate) params.set('startDate', filters.startDate)
-    if (filters.endDate) params.set('endDate', filters.endDate)
-    alert('Filtering would reload the page with the selected date range: ' + params.toString())
-  }
+  const transactions = await getTransactionsData(userId, await searchParams)
 
   return (
     <div className="space-y-6">
-      <h1 className="text-2xl font-bold">Transactions</h1>
-      <TransactionFilters onChange={handleFilterChange} />
+      <h1 className="font-heading text-2xl font-semibold text-foreground">Transactions</h1>
+      <Suspense fallback={null}>
+        <TransactionFilters />
+      </Suspense>
       <TransactionsTable transactions={transactions} />
     </div>
   )

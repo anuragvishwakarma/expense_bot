@@ -2,14 +2,14 @@ import { Bell, MessageSquare, User } from 'lucide-react'
 
 export default function TopNav() {
   return (
-    <header className="flex items-center justify-between px-4 py-4 bg-white shadow-sm">
-      <div className="flex items-center space-x-4">
-        <Bell className="h-5 w-5" />
-        <MessageSquare className="h-5 w-5" />
+    <header className="sticky top-0 z-10 flex h-16 items-center justify-between px-8 bg-background/95 backdrop-blur border-b border-border">
+      <div className="flex items-center gap-4 text-muted-foreground">
+        <Bell className="h-5 w-5" strokeWidth={2} />
+        <MessageSquare className="h-5 w-5" strokeWidth={2} />
       </div>
-      <div className="flex items-center space-x-3">
-        <User className="h-5 w-5" />
-        <span className="hidden md:block">Welcome, User</span>
+      <div className="flex items-center gap-3 text-sm">
+        <User className="h-5 w-5 text-muted-foreground" strokeWidth={2} />
+        <span className="hidden md:block text-foreground">Welcome, User</span>
       </div>
     </header>
   )

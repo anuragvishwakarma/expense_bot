@@ -1,2 +1,10 @@
 node_modules/
 .env
+dist/
+.DS_Store
+*.js
+!jest.config.js
+test/
+tests/**/*.js
+dashboard/**/*.js
+web-dashboard/**/*.js

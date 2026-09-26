@@ -1,8 +1,9 @@
 # Dockerfile
-# Build arg to force cache bust on each deploy
-ARG CACHE_BUST=1
-
 FROM node:22-alpine
+
+# Cache bust: change this value to force rebuild
+ARG CACHE_BUST=2
+RUN echo "Cache bust: $CACHE_BUST"
 
 WORKDIR /app
 

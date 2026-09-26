@@ -2,7 +2,7 @@
 FROM node:22-alpine
 
 # Cache bust: change this value to force rebuild
-ARG CACHE_BUST=2
+ARG CACHE_BUST=3
 RUN echo "Cache bust: $CACHE_BUST"
 
 WORKDIR /app

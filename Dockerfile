@@ -6,11 +6,11 @@ WORKDIR /app
 # Copy package files
 COPY package*.json ./
 
+# Install TypeScript globally FIRST (before npm ci cache layer)
+RUN npm i -g typescript
+
 # Install dependencies
 RUN npm ci --only=production
-
-# Install TypeScript globally for build
-RUN npm i -g typescript
 
 # Copy source code
 COPY . .

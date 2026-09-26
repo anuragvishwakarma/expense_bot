@@ -1,5 +1,8 @@
 # Dockerfile
-FROM node:18-alpine
+# Build arg to force cache bust on each deploy
+ARG CACHE_BUST=1
+
+FROM node:22-alpine
 
 WORKDIR /app
 

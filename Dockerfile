@@ -9,10 +9,13 @@ COPY package*.json ./
 # Install dependencies
 RUN npm ci --only=production
 
+# Install TypeScript globally for build
+RUN npm i -g typescript
+
 # Copy source code
 COPY . .
 
-# Build TypeScript (if needed for production)
+# Build TypeScript
 RUN npm run build
 
 # Expose port (not needed for bot but good practice)

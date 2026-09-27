@@ -17,7 +17,7 @@ interface UserRow {
   updated_at: string;
 }
 
-const DEFAULT_CATEGORIES = [
+export const DEFAULT_CATEGORIES = [
   { name: 'Food & Dining', type: 'expense' as const, icon: '🍽️' },
   { name: 'Transportation', type: 'expense' as const, icon: '🚗' },
   { name: 'Shopping', type: 'expense' as const, icon: '🛍️' },

@@ -55,24 +55,34 @@ function buildAccountsQuery() {
 }
 
 function buildTransactionsQuery(categoryIdSeen: { value: string | null }) {
-  return {
+  // Real supabase-js only sets `Prefer: return=representation` when `.select()`
+  // is called; without it, `.insert(...).single()` resolves with `data: null`.
+  // This fake mirrors that so a missing `.select()` fails loudly here too.
+  const builder: any = {
     insert: jest.fn(function (this: any, row: any) {
       categoryIdSeen.value = row.category_id;
       return this;
     }),
-    select: jest.fn().mockReturnThis(),
-    single: jest.fn(() => Promise.resolve({
-      data: {
-        id: 'txn-1',
-        user_id: 'user-1',
-        amount: 500,
-        description: 'test',
-        type: 'expense',
-        category_id: categoryIdSeen.value
-      },
-      error: null
-    }))
+    select: jest.fn(function (this: any) {
+      this.__selected = true;
+      return this;
+    }),
+    single: jest.fn(function (this: any) {
+      if (!this.__selected) return Promise.resolve({ data: null, error: null });
+      return Promise.resolve({
+        data: {
+          id: 'txn-1',
+          user_id: 'user-1',
+          amount: 500,
+          description: 'test',
+          type: 'expense',
+          category_id: categoryIdSeen.value
+        },
+        error: null
+      });
+    })
   };
+  return builder;
 }
 
 describe('TransactionService', () => {
@@ -113,5 +123,21 @@ describe('TransactionService', () => {
   it('keeps existing first-alphabetical behavior when categoryName is omitted', async () => {
     await transactionService.addTransaction('user-1', '500 lunch', 'expense');
     expect(categoryIdSeen.value).toBe('cat-food');
+  });
+
+  it('returns the inserted row instead of null (insert must call .select())', async () => {
+    const transaction = await transactionService.addTransaction('user-1', '500 lunch', 'expense');
+    expect(transaction).not.toBeNull();
+    expect(transaction.amount).toBe(500);
+  });
+
+  it('returns the actually-resolved category name, not just its id', async () => {
+    const transaction = await transactionService.addTransaction('user-1', '500 lunch', 'expense', undefined, 'Transport');
+    expect(transaction.category_name).toBe('Transport');
+  });
+
+  it('returns the fallback category name when categoryName matches nothing', async () => {
+    const transaction = await transactionService.addTransaction('user-1', '500 lunch', 'expense', undefined, 'Nonexistent');
+    expect(transaction.category_name).toBe('Food');
   });
 });

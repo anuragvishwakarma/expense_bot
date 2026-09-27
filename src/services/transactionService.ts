@@ -8,6 +8,7 @@ interface TransactionRow {
   user_id: string;
   account_id: string;
   category_id: string | null;
+  category_name?: string | null;
   amount: number;
   currency_code: string;
   amount_base: number;
@@ -54,6 +55,7 @@ export class TransactionService {
     // Resolve category: exact case-insensitive name match when caller provides one,
     // else fall back to the original first-alphabetical-of-type behavior.
     let categoryId: string | null = null;
+    let resolvedCategoryName: string | null = null;
 
     if (categoryName) {
       const { data: matched, error: matchError } = await supabase
@@ -66,6 +68,7 @@ export class TransactionService {
 
       if (matchError) throw matchError;
       categoryId = matched?.[0]?.id || null;
+      resolvedCategoryName = matched?.[0]?.name || null;
     }
 
     if (!categoryId) {
@@ -79,6 +82,7 @@ export class TransactionService {
 
       if (catError) throw catError;
       categoryId = categories?.[0]?.id || null;
+      resolvedCategoryName = categories?.[0]?.name || null;
     }
     
     // Create transaction
@@ -94,16 +98,17 @@ export class TransactionService {
         description: description || null,
         type
       })
+      .select()
       .single();
 
     if (transError) throw transError;
-    
+
     // Update account current_balance
     const change = type === 'income' ? amountBase : -amountBase; // income increases balance, expense decreases
     const newBalance = acc.current_balance + change;
     await this.accountService.updateAccount(accId, userId, { current_balance: newBalance });
 
-    return transaction;
+    return { ...transaction, category_name: resolvedCategoryName };
   }
 
   async getTransactions(userId: string, options: {

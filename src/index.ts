@@ -17,7 +17,7 @@ import { startWorker } from './worker';
 import { HELP_MESSAGE, ERROR_MESSAGES } from './utils/helpMessages';
 import axios from 'axios';
 import { parseAmount } from './utils/parseAmount';
-import { parseExpenseText } from './services/expenseParserService';
+import { processNlpExpenseMessage, formatForAddTransaction } from './services/expenseParserService';
 import { extractFromOcrText } from './utils/extractFromOcrText';
 import { configureProductionBot } from './production';
 
@@ -148,8 +148,10 @@ bot.on('text', async (ctx, next) => {
     return;
   }
 
-  // Natural-language expense entry: free text with a number in it, not a command
-  if (!text.startsWith('/') && /\d/.test(text)) {
+  // Natural-language expense entry: free text with a number in it, not a
+  // command. Gated on OPENROUTER_API_KEY so the feature no-ops (falls to
+  // next()) when the key isn't configured, matching today's behavior.
+  if (!text.startsWith('/') && /\d/.test(text) && process.env.OPENROUTER_API_KEY) {
     const userId = ctx.session.user.id;
 
     const { data: categoryRows } = await supabase
@@ -160,36 +162,18 @@ bot.on('text', async (ctx, next) => {
 
     const candidateCategories = (categoryRows || []).map((c: { name: string }) => c.name);
 
-    const items = await parseExpenseText(text, candidateCategories);
+    const reply = await processNlpExpenseMessage(text, candidateCategories, async (amount, description, categoryName) => {
+      const transaction = await transactionService.addTransaction(
+        userId,
+        formatForAddTransaction(amount, description),
+        'expense',
+        undefined,
+        categoryName
+      );
+      return { amount: transaction.amount, categoryName: transaction.category_name ?? null };
+    });
 
-    if (!items) {
-      return ctx.reply("Couldn't parse that as an expense. Try /add <amount> <description>.");
-    }
-
-    let total = 0;
-    const lines: string[] = [];
-
-    for (const item of items) {
-      try {
-        const transaction = await transactionService.addTransaction(
-          userId,
-          `${item.amount} ${item.description}`,
-          'expense',
-          undefined,
-          item.category
-        );
-        total += transaction.amount;
-        lines.push(`• ${item.description} — ₹${item.amount} (${item.category})`);
-      } catch (error: unknown) {
-        console.error('NLP expense save error:', error);
-      }
-    }
-
-    if (lines.length === 0) {
-      return ctx.reply("Couldn't parse that as an expense. Try /add <amount> <description>.");
-    }
-
-    return ctx.reply(`✅ Saved ${lines.length} expense${lines.length > 1 ? 's' : ''}:\n${lines.join('\n')}\nTotal: ₹${total}`);
+    return ctx.reply(reply);
   }
 
   return next();

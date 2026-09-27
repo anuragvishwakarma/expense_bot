@@ -65,3 +65,54 @@ export async function parseExpenseText(
     return null;
   }
 }
+
+/**
+ * Builds the string TransactionService.addTransaction expects, forcing an
+ * INR prefix so parseAmount's currency-code pattern never mistakes an
+ * uppercase 3-letter description (e.g. "KFC", "ATM") for a currency code.
+ */
+export function formatForAddTransaction(amount: number, description: string): string {
+  return `₹${amount} ${description}`;
+}
+
+export interface ExpenseSaveResult {
+  amount: number;
+  categoryName: string | null;
+}
+
+const PARSE_FAILURE_MESSAGE = "Couldn't parse that as an expense. Try /add <amount> <description>.";
+
+export async function processNlpExpenseMessage(
+  text: string,
+  candidateCategories: string[],
+  saveExpense: (amount: number, description: string, categoryName: string) => Promise<ExpenseSaveResult>
+): Promise<string> {
+  const items = await parseExpenseText(text, candidateCategories);
+  if (!items) return PARSE_FAILURE_MESSAGE;
+
+  let total = 0;
+  const savedLines: string[] = [];
+  const failedDescriptions: string[] = [];
+  let lastError: string | null = null;
+
+  for (const item of items) {
+    try {
+      const saved = await saveExpense(item.amount, item.description, item.category);
+      total += saved.amount;
+      savedLines.push(`• ${item.description} — ₹${saved.amount} (${saved.categoryName || 'Uncategorized'})`);
+    } catch (error: unknown) {
+      lastError = error instanceof Error ? error.message : 'Unknown error';
+      failedDescriptions.push(item.description);
+    }
+  }
+
+  if (savedLines.length === 0) {
+    return lastError ? `❌ ${lastError}` : PARSE_FAILURE_MESSAGE;
+  }
+
+  let reply = `✅ Saved ${savedLines.length} expense${savedLines.length > 1 ? 's' : ''}:\n${savedLines.join('\n')}\nTotal: ₹${total}`;
+  if (failedDescriptions.length > 0) {
+    reply += `\n⚠️ Not saved: ${failedDescriptions.join(', ')} — try /add`;
+  }
+  return reply;
+}

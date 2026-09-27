@@ -21,7 +21,7 @@ export class TransactionService {
   private currencyService = new CurrencyService();
   private accountService = new AccountService();
 
-  async addTransaction(userId: string, input: string, type: 'expense' | 'income', accountId?: string): Promise<TransactionRow> {
+  async addTransaction(userId: string, input: string, type: 'expense' | 'income', accountId?: string, categoryName?: string): Promise<TransactionRow> {
     const supabase = getSupabase();
     
     // Parse amount, currency, and description
@@ -51,18 +51,35 @@ export class TransactionService {
       throw new Error('Account not found or access denied');
     }
     
-    // Try to find matching category (default to first of type)
-    const { data: categories, error: catError } = await supabase
-      .from('categories')
-      .select('id, name')
-      .eq('user_id', userId)
-      .eq('type', type)
-      .order('name')
-      .limit(1);
-    
-    if (catError) throw catError;
-    
-    const categoryId = categories?.[0]?.id || null;
+    // Resolve category: exact case-insensitive name match when caller provides one,
+    // else fall back to the original first-alphabetical-of-type behavior.
+    let categoryId: string | null = null;
+
+    if (categoryName) {
+      const { data: matched, error: matchError } = await supabase
+        .from('categories')
+        .select('id, name')
+        .eq('user_id', userId)
+        .eq('type', type)
+        .ilike('name', categoryName)
+        .limit(1);
+
+      if (matchError) throw matchError;
+      categoryId = matched?.[0]?.id || null;
+    }
+
+    if (!categoryId) {
+      const { data: categories, error: catError } = await supabase
+        .from('categories')
+        .select('id, name')
+        .eq('user_id', userId)
+        .eq('type', type)
+        .order('name')
+        .limit(1);
+
+      if (catError) throw catError;
+      categoryId = categories?.[0]?.id || null;
+    }
     
     // Create transaction
     const { data: transaction, error: transError } = await supabase

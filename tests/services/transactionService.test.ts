@@ -1,40 +1,143 @@
-import { TransactionService } from '../../src/services/transactionService';
+const mockCategories = [
+  { id: 'cat-food', name: 'Food' },
+  { id: 'cat-transport', name: 'Transport' }
+];
 
-// Mock the supabase client for testing
-jest.mock('../../src/db', () => ({
-  getSupabase: () => ({
-    from: jest.fn().mockReturnThis(),
+function buildCategoriesQuery() {
+  // Real chain shapes (see src/services/transactionService.ts):
+  //   with categoryName:    select().eq().eq().ilike().limit()
+  //   fallback (no match):  select().eq().eq().order().limit()
+  // `.limit()` is the terminal call that resolves; it inspects whether
+  // `.ilike()` was called on this same builder instance to decide which
+  // result set to return.
+  const rows = [mockCategories[0]]; // order('name').limit(1) equivalent
+
+  const builder: any = {
+    select: jest.fn().mockReturnThis(),
+    eq: jest.fn().mockReturnThis(),
+    order: jest.fn().mockReturnThis(),
+    ilike: jest.fn(function (this: any, _col: string, value: string) {
+      this.__ilikeValue = value;
+      return this;
+    }),
+    limit: jest.fn(function (this: any) {
+      if (this.__ilikeValue) {
+        const matched = mockCategories.filter(
+          c => c.name.toLowerCase() === this.__ilikeValue.toLowerCase()
+        );
+        return Promise.resolve({ data: matched, error: null });
+      }
+      return Promise.resolve({ data: rows, error: null });
+    })
+  };
+
+  return builder;
+}
+
+function buildAccountsQuery() {
+  // Real chain shapes (see src/services/accountService.ts):
+  //   getDefaultAccount: select().eq().order().limit(1).single()
+  //   getAccount:        select().eq().eq().single()
+  //   updateAccount:     update().eq().eq().select().single()
+  // In every case `.single()` is the terminal call that actually resolves;
+  // everything before it just returns the same builder (matches supabase-js).
+  return {
     select: jest.fn().mockReturnThis(),
     eq: jest.fn().mockReturnThis(),
     order: jest.fn().mockReturnThis(),
     limit: jest.fn().mockReturnThis(),
-    insert: jest.fn().mockReturnThis(),
-    single: jest.fn().mockResolvedValue({ 
-      data: { 
-        id: 'test-id', 
-        user_id: 'test-user', 
-        amount: 500, 
-        description: 'test', 
-        type: 'expense',
-        category_id: 'test-category'
-      }, 
-      error: null 
+    update: jest.fn().mockReturnThis(),
+    single: jest.fn().mockResolvedValue({
+      data: { id: 'acc-1', user_id: 'user-1', current_balance: 0, currency_code: 'INR' },
+      error: null
+    })
+  };
+}
+
+function buildTransactionsQuery(categoryIdSeen: { value: string | null }) {
+  // Real supabase-js only sets `Prefer: return=representation` when `.select()`
+  // is called; without it, `.insert(...).single()` resolves with `data: null`.
+  // This fake mirrors that so a missing `.select()` fails loudly here too.
+  const builder: any = {
+    insert: jest.fn(function (this: any, row: any) {
+      categoryIdSeen.value = row.category_id;
+      return this;
     }),
-    gte: jest.fn().mockReturnThis(),
-    lte: jest.fn().mockReturnThis()
-  })
-}));
+    select: jest.fn(function (this: any) {
+      this.__selected = true;
+      return this;
+    }),
+    single: jest.fn(function (this: any) {
+      if (!this.__selected) return Promise.resolve({ data: null, error: null });
+      return Promise.resolve({
+        data: {
+          id: 'txn-1',
+          user_id: 'user-1',
+          amount: 500,
+          description: 'test',
+          type: 'expense',
+          category_id: categoryIdSeen.value
+        },
+        error: null
+      });
+    })
+  };
+  return builder;
+}
 
 describe('TransactionService', () => {
-  let transactionService: TransactionService;
+  let transactionService: any;
+  let categoryIdSeen: { value: string | null };
 
   beforeEach(() => {
-    transactionService = new TransactionService();
+    categoryIdSeen = { value: null };
+    jest.resetModules();
+    jest.doMock('../../src/db', () => ({
+      getSupabase: () => ({
+        from: (table: string) => {
+          if (table === 'categories') return buildCategoriesQuery();
+          if (table === 'accounts') return buildAccountsQuery();
+          if (table === 'transactions') return buildTransactionsQuery(categoryIdSeen);
+          throw new Error(`unexpected table ${table}`);
+        }
+      })
+    }));
+    const { TransactionService: FreshTransactionService } = require('../../src/services/transactionService');
+    transactionService = new FreshTransactionService();
   });
 
   it('should be defined', () => {
     expect(transactionService).toBeDefined();
   });
 
-  // Additional tests would go here in a real implementation
+  it('uses the matching category when categoryName is given', async () => {
+    await transactionService.addTransaction('user-1', '500 lunch', 'expense', undefined, 'Transport');
+    expect(categoryIdSeen.value).toBe('cat-transport');
+  });
+
+  it('falls back to the first category when categoryName matches nothing', async () => {
+    await transactionService.addTransaction('user-1', '500 lunch', 'expense', undefined, 'Nonexistent');
+    expect(categoryIdSeen.value).toBe('cat-food');
+  });
+
+  it('keeps existing first-alphabetical behavior when categoryName is omitted', async () => {
+    await transactionService.addTransaction('user-1', '500 lunch', 'expense');
+    expect(categoryIdSeen.value).toBe('cat-food');
+  });
+
+  it('returns the inserted row instead of null (insert must call .select())', async () => {
+    const transaction = await transactionService.addTransaction('user-1', '500 lunch', 'expense');
+    expect(transaction).not.toBeNull();
+    expect(transaction.amount).toBe(500);
+  });
+
+  it('returns the actually-resolved category name, not just its id', async () => {
+    const transaction = await transactionService.addTransaction('user-1', '500 lunch', 'expense', undefined, 'Transport');
+    expect(transaction.category_name).toBe('Transport');
+  });
+
+  it('returns the fallback category name when categoryName matches nothing', async () => {
+    const transaction = await transactionService.addTransaction('user-1', '500 lunch', 'expense', undefined, 'Nonexistent');
+    expect(transaction.category_name).toBe('Food');
+  });
 });

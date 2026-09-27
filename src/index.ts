@@ -17,6 +17,7 @@ import { startWorker } from './worker';
 import { HELP_MESSAGE, ERROR_MESSAGES } from './utils/helpMessages';
 import axios from 'axios';
 import { parseAmount } from './utils/parseAmount';
+import { processNlpExpenseMessage, formatForAddTransaction } from './services/expenseParserService';
 import { extractFromOcrText } from './utils/extractFromOcrText';
 import { configureProductionBot } from './production';
 
@@ -145,6 +146,34 @@ bot.on('text', async (ctx, next) => {
       ctx.reply(`❌ Error: ${error instanceof Error ? error instanceof Error ? error.message : "Unknown error" : 'Unknown error'}`);
     }
     return;
+  }
+
+  // Natural-language expense entry: free text with a number in it, not a
+  // command. Gated on OPENROUTER_API_KEY so the feature no-ops (falls to
+  // next()) when the key isn't configured, matching today's behavior.
+  if (!text.startsWith('/') && /\d/.test(text) && process.env.OPENROUTER_API_KEY) {
+    const userId = ctx.session.user.id;
+
+    const { data: categoryRows } = await supabase
+      .from('categories')
+      .select('name')
+      .eq('user_id', userId)
+      .eq('type', 'expense');
+
+    const candidateCategories = (categoryRows || []).map((c: { name: string }) => c.name);
+
+    const reply = await processNlpExpenseMessage(text, candidateCategories, async (amount, description, categoryName) => {
+      const transaction = await transactionService.addTransaction(
+        userId,
+        formatForAddTransaction(amount, description),
+        'expense',
+        undefined,
+        categoryName
+      );
+      return { amount: transaction.amount, categoryName: transaction.category_name ?? null };
+    });
+
+    return ctx.reply(reply);
   }
 
   return next();

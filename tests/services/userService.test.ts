@@ -23,5 +23,9 @@ describe('UserService', () => {
     expect(userService).toBeDefined();
   });
 
+  it('should have generateLinkCode method', () => {
+    expect(typeof userService.generateLinkCode).toBe('function');
+  });
+
   // Additional tests would go here in a real implementation
 });

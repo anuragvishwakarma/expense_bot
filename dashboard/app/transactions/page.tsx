@@ -1,9 +1,10 @@
 import { Suspense } from 'react'
 import { redirect } from 'next/navigation'
-import { supabase } from '@/lib/supabase'
-import { getUserIdFromRequest } from '@/lib/auth'
+import { getServerSupabase } from '@/lib/supabase'
+import { getUserIdFromRequest, getLinkedUserId } from '@/lib/auth'
 import TransactionFilters from '@/components/widgets/TransactionFilters'
 import TransactionsTable from '@/components/widgets/TransactionsTable'
+import NotLinked from '@/components/not-linked'
 
 export const dynamic = 'force-dynamic'
 
@@ -17,6 +18,7 @@ interface Transaction {
 }
 
 async function getTransactionsData(userId: string, searchParams: { startDate?: string; endDate?: string }) {
+  const supabase = await getServerSupabase()
   let queryBuilder = supabase
     .from('transactions')
     .select(`
@@ -48,10 +50,21 @@ export default async function TransactionsPage({
 }: {
   searchParams: Promise<{ startDate?: string; endDate?: string }>
 }) {
-  const userId = await getUserIdFromRequest()
+  const authUserId = await getUserIdFromRequest()
+
+  if (!authUserId) {
+    redirect('/login')
+  }
+
+  const userId = await getLinkedUserId(authUserId)
 
   if (!userId) {
-    redirect('/login')
+    return (
+      <div className="space-y-6">
+        <h1 className="font-heading text-2xl font-semibold text-foreground">Transactions</h1>
+        <NotLinked />
+      </div>
+    )
   }
 
   const transactions = await getTransactionsData(userId, await searchParams)

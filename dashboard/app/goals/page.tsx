@@ -1,7 +1,8 @@
 import { redirect } from 'next/navigation'
-import { supabase } from '@/lib/supabase'
-import { getUserIdFromRequest } from '@/lib/auth'
+import { getServerSupabase } from '@/lib/supabase'
+import { getUserIdFromRequest, getLinkedUserId } from '@/lib/auth'
 import GoalsProgress from '@/components/widgets/GoalsProgress'
+import NotLinked from '@/components/not-linked'
 
 export const dynamic = 'force-dynamic'
 
@@ -13,6 +14,7 @@ interface Goal {
 }
 
 async function getGoalsData(userId: string) {
+  const supabase = await getServerSupabase()
   const { data: goals, error } = await supabase
     .from('goals')
     .select('*')
@@ -28,10 +30,21 @@ async function getGoalsData(userId: string) {
 }
 
 export default async function GoalsPage() {
-  const userId = await getUserIdFromRequest()
+  const authUserId = await getUserIdFromRequest()
+
+  if (!authUserId) {
+    redirect('/login')
+  }
+
+  const userId = await getLinkedUserId(authUserId)
 
   if (!userId) {
-    redirect('/login')
+    return (
+      <div className="space-y-6">
+        <h1 className="font-heading text-2xl font-semibold text-foreground">Goals</h1>
+        <NotLinked />
+      </div>
+    )
   }
 
   const goals = await getGoalsData(userId)

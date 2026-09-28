@@ -1,4 +1,5 @@
 import { getSupabase } from '../db';
+import * as crypto from 'crypto';
 
 export interface TelegramUser {
   id: number;
@@ -105,8 +106,25 @@ export class UserService {
       .select('*')
       .eq('telegram_id', telegramId)
       .single();
-    
+
     if (error) throw error;
     return data;
+  }
+
+  async generateLinkCode(userId: string): Promise<{ code: string; expiresAt: string }> {
+    const supabase = getSupabase();
+    // CSPRNG, not Math.random(); only the hash is persisted so a DB read
+    // never exposes a redeemable code.
+    const code = crypto.randomInt(100000, 1000000).toString();
+    const codeHash = crypto.createHash('sha256').update(code).digest('hex');
+    const expiresAt = new Date(Date.now() + 10 * 60 * 1000).toISOString();
+
+    const { error } = await supabase
+      .from('users')
+      .update({ link_code_hash: codeHash, link_code_expires_at: expiresAt })
+      .eq('id', userId);
+
+    if (error) throw error;
+    return { code, expiresAt };
   }
 }

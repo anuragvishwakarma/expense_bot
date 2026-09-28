@@ -857,6 +857,21 @@ bot.command('account', async (ctx) => {
   }
 });
 
+// Link dashboard account command
+bot.command('link', async (ctx) => {
+  if (!ctx.session.user) {
+    return ctx.reply('Please start the bot first with /start');
+  }
+  try {
+    const { code, expiresAt } = await userService.generateLinkCode(ctx.session.user.id);
+    const expiresInMin = Math.round((new Date(expiresAt).getTime() - Date.now()) / 60000);
+    ctx.reply(`🔗 Your dashboard link code: ${code}\nEnter it on the dashboard's Settings page within ${expiresInMin} minutes.`);
+  } catch (error: unknown) {
+    console.error('Generate link code error:', error);
+    ctx.reply(`❌ Error: ${error instanceof Error ? error.message : "Unknown error"}`);
+  }
+});
+
 // Voice message handler
 bot.on('voice', async (ctx) => {
   if (!ctx.session.user) {

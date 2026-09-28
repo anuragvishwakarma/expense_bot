@@ -2,12 +2,14 @@ import { redirect } from 'next/navigation'
 import SummaryCards from '@/components/widgets/SummaryCards'
 import IncomeExpenseChart from '@/components/widgets/IncomeExpenseChart'
 import GoalsProgress from '@/components/widgets/GoalsProgress'
-import { supabase } from '@/lib/supabase'
-import { getUserIdFromRequest } from '@/lib/auth'
+import NotLinked from '@/components/not-linked'
+import { getServerSupabase } from '@/lib/supabase'
+import { getUserIdFromRequest, getLinkedUserId } from '@/lib/auth'
 
 export const dynamic = 'force-dynamic'
 
 async function getDashboardData(userId: string) {
+  const supabase = await getServerSupabase()
   const now = new Date()
   const startOfMonth = new Date(now.getFullYear(), now.getMonth(), 1)
   const endOfMonth = new Date(now.getFullYear(), now.getMonth() + 1, 0)
@@ -79,10 +81,21 @@ async function getDashboardData(userId: string) {
 }
 
 export default async function OverviewPage() {
-  const userId = await getUserIdFromRequest()
+  const authUserId = await getUserIdFromRequest()
+
+  if (!authUserId) {
+    redirect('/login')
+  }
+
+  const userId = await getLinkedUserId(authUserId)
 
   if (!userId) {
-    redirect('/login')
+    return (
+      <div className="space-y-6">
+        <h1 className="font-heading text-2xl font-semibold text-foreground">Dashboard overview</h1>
+        <NotLinked />
+      </div>
+    )
   }
 
   const { totalIncome, totalExpense, net, monthlyData, goals } = await getDashboardData(userId)

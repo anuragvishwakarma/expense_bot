@@ -46,6 +46,9 @@ Example: /budget Food 5000 9 2026
 /debt list - List your debts (shows each debt's ID)
 /debt delete <id> - Delete a debt
 
+*Dashboard:*
+/link - Get a one-time code to connect this Telegram account to the web dashboard
+
 *Accounts:*
 /account add <name> <type> [currency] [starting_balance] - Create an account (types: checking, savings, credit, cash, investment, other)
 /account list - List your accounts (shows each account's ID)

@@ -2,6 +2,7 @@
 
 import { useState } from 'react'
 import { useRouter } from 'next/navigation'
+import Link from 'next/link'
 
 export default function LoginPage() {
   const router = useRouter()
@@ -97,7 +98,12 @@ export default function LoginPage() {
           </form>
 
           <div className="mt-6 text-center text-sm text-muted-foreground">
-            <p>Demo: use test credentials from your Supabase project</p>
+            <p>
+              Don&apos;t have an account?{' '}
+              <Link href="/signup" className="text-primary underline">
+                Sign up
+              </Link>
+            </p>
           </div>
         </div>
       </div>

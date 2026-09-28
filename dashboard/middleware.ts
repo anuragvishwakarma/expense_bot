@@ -4,7 +4,7 @@ import { createServerClient } from '@supabase/ssr'
 const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL!
 const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
 
-const publicRoutes = ['/login']
+const publicRoutes = ['/login', '/signup']
 
 export async function middleware(request: NextRequest) {
   const pathname = request.nextUrl.pathname
@@ -68,6 +68,6 @@ export async function middleware(request: NextRequest) {
 
 export const config = {
   matcher: [
-    '/((?!_next|login|favicon|static|public|api).*)',
+    '/((?!_next|login|signup|favicon|static|public|api).*)',
   ],
 }

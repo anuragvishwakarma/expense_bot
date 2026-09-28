@@ -87,7 +87,8 @@ export class BudgetService {
     
     // Get actual expenses for the month
     const startDate = `${year}-${month.toString().padStart(2, '0')}-01`;
-    const endDate = `${year}-${month.toString().padStart(2, '0')}-31`;
+    const lastDay = new Date(year, month, 0).getDate();
+    const endDate = `${year}-${month.toString().padStart(2, '0')}-${lastDay.toString().padStart(2, '0')}`;
     
     const { data: expenses, error: expenseError } = await supabase
       .from('transactions')

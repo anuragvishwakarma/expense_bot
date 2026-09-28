@@ -428,7 +428,7 @@ bot.command('recur', async (ctx) => {
   if (!ctx.session.user) {
     return ctx.reply('Please start the bot first with /start');
   }
-  const text = ctx.message.text.substring(5).trim(); // remove '/recur '
+  const text = ctx.message.text.substring(6).trim(); // remove '/recur '
   const parts = text.split(' ');
   const subcmd = parts[0];
 
@@ -609,7 +609,7 @@ bot.command('goal', async (ctx) => {
       let msg = '🎯 Your goals:\n';
       for (const g of goals) {
         const progress = (g.saved_amount / g.target_amount) * 100;
-        msg += `• ${g.name}: ₹${g.saved_amount.toFixed(2)} / ₹${g.target_amount.toFixed(2)} (${progress.toFixed(1)}%)\n`;
+        msg += `• ${g.name}: ₹${g.saved_amount.toFixed(2)} / ₹${g.target_amount.toFixed(2)} (${progress.toFixed(1)}%) | ID: ${g.id}\n`;
       }
       ctx.reply(msg);
     } catch (error: unknown) {
@@ -732,7 +732,7 @@ bot.command('debt', async (ctx) => {
         if (d.description) {
           msg += ` (${d.description})`;
         }
-        msg += `\n`;
+        msg += ` | ID: ${d.id}\n`;
       }
       ctx.reply(msg);
     } catch (error: unknown) {
@@ -797,7 +797,7 @@ bot.command('account', async (ctx) => {
       }
       let msg = '💳 Your accounts:\n';
       for (const acc of accounts) {
-        msg += `• ${acc.name} (${acc.type}) [${acc.currency_code}]\n  Balance: ${acc.current_balance.toFixed(2)}\n`;
+        msg += `• ${acc.name} (${acc.type}) [${acc.currency_code}]\n  Balance: ${acc.current_balance.toFixed(2)} | ID: ${acc.id}\n`;
       }
       ctx.reply(msg);
     } catch (error: unknown) {

@@ -5,29 +5,30 @@ const mockCategories = [
 
 function buildCategoriesQuery() {
   // Real chain shapes (see src/services/transactionService.ts):
-  //   with categoryName:    select().eq().eq().ilike().limit()
-  //   fallback (no match):  select().eq().eq().order().limit()
-  // `.limit()` is the terminal call that resolves; it inspects whether
-  // `.ilike()` was called on this same builder instance to decide which
-  // result set to return.
-  const rows = [mockCategories[0]]; // order('name').limit(1) equivalent
-
+  //   name match:            select().eq().eq().ilike().limit()
+  //   Uncategorized lookup:  select().eq().eq().ilike().limit() (separate call)
+  //   Uncategorized create:  insert().select().single()
+  // `.limit()` is the terminal call for lookups; it filters by whatever name
+  // `.ilike()` was last called with on this same builder instance.
   const builder: any = {
     select: jest.fn().mockReturnThis(),
     eq: jest.fn().mockReturnThis(),
-    order: jest.fn().mockReturnThis(),
     ilike: jest.fn(function (this: any, _col: string, value: string) {
       this.__ilikeValue = value;
       return this;
     }),
     limit: jest.fn(function (this: any) {
-      if (this.__ilikeValue) {
-        const matched = mockCategories.filter(
-          c => c.name.toLowerCase() === this.__ilikeValue.toLowerCase()
-        );
-        return Promise.resolve({ data: matched, error: null });
-      }
-      return Promise.resolve({ data: rows, error: null });
+      const matched = mockCategories.filter(
+        c => c.name.toLowerCase() === this.__ilikeValue.toLowerCase()
+      );
+      return Promise.resolve({ data: matched, error: null });
+    }),
+    insert: jest.fn(function (this: any, row: any) {
+      this.__inserted = { id: 'cat-uncategorized', name: row.name };
+      return this;
+    }),
+    single: jest.fn(function (this: any) {
+      return Promise.resolve({ data: this.__inserted, error: null });
     })
   };
 
@@ -115,14 +116,14 @@ describe('TransactionService', () => {
     expect(categoryIdSeen.value).toBe('cat-transport');
   });
 
-  it('falls back to the first category when categoryName matches nothing', async () => {
+  it('falls back to Uncategorized when categoryName matches nothing', async () => {
     await transactionService.addTransaction('user-1', '500 lunch', 'expense', undefined, 'Nonexistent');
-    expect(categoryIdSeen.value).toBe('cat-food');
+    expect(categoryIdSeen.value).toBe('cat-uncategorized');
   });
 
-  it('keeps existing first-alphabetical behavior when categoryName is omitted', async () => {
+  it('falls back to Uncategorized when categoryName is omitted', async () => {
     await transactionService.addTransaction('user-1', '500 lunch', 'expense');
-    expect(categoryIdSeen.value).toBe('cat-food');
+    expect(categoryIdSeen.value).toBe('cat-uncategorized');
   });
 
   it('returns the inserted row instead of null (insert must call .select())', async () => {
@@ -138,6 +139,6 @@ describe('TransactionService', () => {
 
   it('returns the fallback category name when categoryName matches nothing', async () => {
     const transaction = await transactionService.addTransaction('user-1', '500 lunch', 'expense', undefined, 'Nonexistent');
-    expect(transaction.category_name).toBe('Food');
+    expect(transaction.category_name).toBe('Uncategorized');
   });
 });

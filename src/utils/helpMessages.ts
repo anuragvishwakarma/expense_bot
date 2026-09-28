@@ -26,6 +26,32 @@ Example: /budget Food 5000 9 2026
 
 /budgetstatus [month] [year] - Check budget status for a month
 
+*Recurring & Reminders:*
+/recur add <amount> <description> <type> every <value> <day|week|month> [start YYYY-MM-DD] [end YYYY-MM-DD] - Schedule a recurring transaction
+/recur list - List active recurrences
+/recur delete <id> - Deactivate a recurrence
+/reminder on [HH:MM] - Enable daily reminder (defaults to 21:00)
+/reminder off - Disable daily reminder
+
+*Goals:*
+/goal set <name> <target_amount> - Create a savings goal
+/goal list - List your goals (shows each goal's ID)
+/goal progress <id> <amount> - Add progress toward a goal
+/goal delete <id> - Delete a goal
+
+*Debts:*
+/debt lend <person> <amount> [description] - Record money you lent
+/debt borrow <person> <amount> [description] - Record money you borrowed
+/debt settle <id> <amount> - Record a settlement payment
+/debt list - List your debts (shows each debt's ID)
+/debt delete <id> - Delete a debt
+
+*Accounts:*
+/account add <name> <type> [currency] [starting_balance] - Create an account (types: checking, savings, credit, cash, investment, other)
+/account list - List your accounts (shows each account's ID)
+/account transfer <from_id> <to_id> <amount> - Transfer between accounts
+/account delete <id> - Delete an account
+
 *Examples:*
 • Track lunch expense: /add 250 lunch
 • Record income: +1500 bonus

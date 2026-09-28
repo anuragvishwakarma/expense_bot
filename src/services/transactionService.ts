@@ -53,7 +53,8 @@ export class TransactionService {
     }
     
     // Resolve category: exact case-insensitive name match when caller provides one,
-    // else fall back to the original first-alphabetical-of-type behavior.
+    // else file under Uncategorized rather than guessing (reports inner-join on
+    // category, so every transaction still needs a real category row).
     let categoryId: string | null = null;
     let resolvedCategoryName: string | null = null;
 
@@ -72,17 +73,30 @@ export class TransactionService {
     }
 
     if (!categoryId) {
-      const { data: categories, error: catError } = await supabase
+      const { data: uncategorized, error: uncatError } = await supabase
         .from('categories')
         .select('id, name')
         .eq('user_id', userId)
         .eq('type', type)
-        .order('name')
+        .ilike('name', 'Uncategorized')
         .limit(1);
 
-      if (catError) throw catError;
-      categoryId = categories?.[0]?.id || null;
-      resolvedCategoryName = categories?.[0]?.name || null;
+      if (uncatError) throw uncatError;
+
+      if (uncategorized?.[0]) {
+        categoryId = uncategorized[0].id;
+        resolvedCategoryName = uncategorized[0].name;
+      } else {
+        const { data: created, error: createError } = await supabase
+          .from('categories')
+          .insert({ user_id: userId, name: 'Uncategorized', type, icon: '❔' })
+          .select('id, name')
+          .single();
+
+        if (createError) throw createError;
+        categoryId = created.id;
+        resolvedCategoryName = created.name;
+      }
     }
     
     // Create transaction

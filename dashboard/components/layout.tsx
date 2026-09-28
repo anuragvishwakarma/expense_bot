@@ -1,7 +1,15 @@
+'use client'
+
+import { usePathname } from 'next/navigation'
 import Sidebar from './sidebar'
 import TopNav from './top-nav'
 
 export default function Layout({ children }: { children: React.ReactNode }) {
+  const pathname = usePathname()
+  if (pathname === '/login') {
+    return <>{children}</>
+  }
+
   return (
     <div className="min-h-screen bg-background">
       <Sidebar />

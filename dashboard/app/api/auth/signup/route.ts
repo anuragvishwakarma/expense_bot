@@ -1,10 +1,13 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createServerClient } from '@supabase/ssr'
-import { createHash } from 'crypto'
+import { createHash, randomBytes } from 'crypto'
 
-// TEMP DEBUG - short, non-reversible fingerprint so log lines can be
-// compared for equality without printing raw client IPs.
-const fingerprint = (value: string) => createHash('sha256').update(value).digest('hex').slice(0, 8)
+// TEMP DEBUG - fingerprint for comparing log lines by equality without
+// printing raw client IPs. Salted per-process and never logged itself,
+// since IPv4 space (~4B) is small enough that an unsalted hash is a
+// rainbow-table lookup, not real anonymization.
+const debugSalt = randomBytes(16).toString('hex')
+const fingerprint = (value: string) => createHash('sha256').update(debugSalt).update(value).digest('hex').slice(0, 8)
 
 const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL!
 const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!

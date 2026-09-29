@@ -19,21 +19,13 @@ export function startWorker(bot: Telegraf<Context>) {
 
     // --- Process recurrences ---
     try {
-      const supabase = getSupabase();
-      const { data: users, error: userErr } = await supabase
-        .from('users')
-        .select('id');
-      if (userErr) throw userErr;
-      for (const { id: userId } of users ?? []) {
-        const recurrences = await recurrenceService.getDueRecurrences(now);
-        for (const rec of recurrences) {
-          // Create transaction
-          await transactionService.addTransaction(
-            userId,
-            `${rec.amount} ${rec.description}`,
-            rec.type as 'expense' | 'income'
-          );
-        }
+      const recurrences = await recurrenceService.getDueRecurrences(now);
+      for (const rec of recurrences) {
+        await transactionService.addTransaction(
+          rec.user_id,
+          `${rec.amount} ${rec.description}`,
+          rec.type as 'expense' | 'income'
+        );
       }
     } catch (e) {
       console.error('Error processing recurrences:', e);

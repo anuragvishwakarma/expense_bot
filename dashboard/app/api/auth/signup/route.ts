@@ -1,5 +1,10 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createServerClient } from '@supabase/ssr'
+import { createHash } from 'crypto'
+
+// TEMP DEBUG - short, non-reversible fingerprint so log lines can be
+// compared for equality without printing raw client IPs.
+const fingerprint = (value: string) => createHash('sha256').update(value).digest('hex').slice(0, 8)
 
 const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL!
 const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
@@ -43,7 +48,8 @@ export async function POST(request: NextRequest) {
     const forwardedFor = request.headers.get('x-forwarded-for')
     const ip = forwardedFor?.split(',').map((part) => part.trim()).filter(Boolean).pop() || 'unknown'
     // TEMP DEBUG - remove once rate-limit-not-tripping-in-prod is diagnosed.
-    console.log(`[signup-debug] pid=${process.pid} ip=${JSON.stringify(ip)} rawXFF=${JSON.stringify(forwardedFor)} mapSize=${attempts.size} entry=${JSON.stringify(attempts.get(ip))}`)
+    const xffParts = forwardedFor ? forwardedFor.split(',').map((p) => fingerprint(p.trim())) : null
+    console.log(`[signup-debug] pid=${process.pid} ipFp=${fingerprint(ip)} xffPartCount=${xffParts?.length ?? 0} xffFps=${JSON.stringify(xffParts)} mapSize=${attempts.size} entry=${JSON.stringify(attempts.get(ip))}`)
     if (isRateLimited(ip)) {
       return NextResponse.json(
         { error: 'Too many signup attempts. Try again later.' },

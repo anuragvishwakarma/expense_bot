@@ -882,7 +882,9 @@ bot.on('voice', async (ctx) => {
     const fileId = ctx.message.voice.file_id;
     const fileLink = await ctx.telegram.getFileLink(fileId);
     // Transcribe the voice
-    const transcription = await voiceService.transcribeVoice(fileLink.toString());
+    // Download here so the token-bearing file URL never leaves the bot
+    const audioBuffer = Buffer.from(await (await fetch(fileLink.toString())).arrayBuffer());
+    const transcription = await voiceService.transcribeVoice(audioBuffer);
     if (!transcription) {
       return ctx.reply('❌ Could not transcribe the voice message. Please try again or enter manually with /add.');
     }
@@ -988,7 +990,10 @@ bot.on('photo', async (ctx) => {
   const file_id = photo.file_id;
   try {
     const fileLink = await ctx.telegram.getFileLink(file_id);
-    const ocrResult = await ocrService.getOCRFromUrl(fileLink.toString());
+    // Download here so the token-bearing file URL never leaves the bot
+    const photoRes = await fetch(fileLink.toString());
+    const photoBuffer = Buffer.from(await photoRes.arrayBuffer());
+    const ocrResult = await ocrService.getOCRFromBuffer(photoBuffer);
     if (!ocrResult || !ocrResult.text) {
       return ctx.reply('❌ OCR failed to extract text from the image. Please try a clearer photo or enter manually with /add.');
     }
@@ -999,8 +1004,6 @@ bot.on('photo', async (ctx) => {
     // Store pending result keyed by user id
     pendingOCR.set(ctx.from.id.toString(), parsed);
     const preview = `🧾 *OCR Result*\\n\\n*Amount:* ₹${parsed.amount.toFixed(2)}\\n*Description:* ${parsed.description}\\n*Date:* ${parsed.date}\\n\\nSave this expense?`;
-    const photoRes = await fetch(fileLink.toString());
-    const photoBuffer = Buffer.from(await photoRes.arrayBuffer());
     await ctx.replyWithPhoto({ source: photoBuffer }, {
       caption: preview,
       parse_mode: 'Markdown',

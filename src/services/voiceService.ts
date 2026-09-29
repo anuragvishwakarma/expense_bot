@@ -12,18 +12,15 @@ export class VoiceService {
     this.transactionService = new TransactionService();
   }
 
-  async transcribeVoice(audioUrl: string): Promise<string> {
+  async transcribeVoice(audio: Buffer): Promise<string> {
     try {
-      const audio = {
-        uri: audioUrl,
-      };
       const config = {
         encoding: 'OGG_OPUS' as const,
         sampleRateHertz: 48000,
         languageCode: 'en-US',
       };
       const request = {
-        audio: audio,
+        audio: { content: audio.toString('base64') },
         config: config,
       };
       const [response] = await this.speechClient.recognize(request);
@@ -33,7 +30,7 @@ export class VoiceService {
         .join('\n');
       return transcription.trim();
     } catch (error) {
-      console.error('Voice transcription error:', error);
+      console.error('Voice transcription error:', error instanceof Error ? error.message : 'unknown');
       throw error;
     }
   }

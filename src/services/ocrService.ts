@@ -13,11 +13,11 @@ export class OCRService {
     }
   }
 
-  async getOCRFromUrl(imageUrl: string): Promise<{ text: string } | null> {
+  async getOCRFromBuffer(image: Buffer): Promise<{ text: string } | null> {
     if (!this.apiKey) return null;
     try {
       const form = new FormData();
-      form.append('url', imageUrl);
+      form.append('file', image, { filename: 'receipt.jpg' });
       form.append('language', 'eng');
       form.append('isOverlayRequired', 'false');
       form.append('apikey', this.apiKey);
@@ -30,7 +30,8 @@ export class OCRService {
         return { text };
       }
     } catch (e) {
-      console.error('OCR API error:', e);
+      // log message only: axios errors embed request config (apikey)
+      console.error('OCR API error:', e instanceof Error ? e.message : 'unknown');
     }
     return null;
   }

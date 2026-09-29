@@ -8,6 +8,7 @@ const CONFIRM_MESSAGE = 'Account created. Check your email to confirm before sig
 
 const MAX_SIGNUPS = 5
 const WINDOW_MS = 60 * 60 * 1000
+const MAX_TRACKED = 10_000
 
 // ponytail: in-memory, per-instance rate limit - same tradeoff as
 // /api/link-telegram. Resets on redeploy/cold start, doesn't share state
@@ -17,6 +18,14 @@ const attempts = new Map<string, { count: number; resetAt: number }>()
 
 function isRateLimited(key: string): boolean {
   const now = Date.now()
+  // ponytail: sweep expired entries only once the map gets big, not every
+  // call - keeps this O(1) in the common case while still bounding memory
+  // against an attacker cycling spoofed keys forever.
+  if (attempts.size > MAX_TRACKED) {
+    for (const [k, v] of attempts) {
+      if (now > v.resetAt) attempts.delete(k)
+    }
+  }
   const entry = attempts.get(key)
   if (!entry || now > entry.resetAt) {
     attempts.set(key, { count: 1, resetAt: now + WINDOW_MS })
@@ -28,7 +37,11 @@ function isRateLimited(key: string): boolean {
 
 export async function POST(request: NextRequest) {
   try {
-    const ip = request.headers.get('x-forwarded-for')?.split(',')[0]?.trim() || 'unknown'
+    // Rightmost entry is appended by our own edge proxy on the connecting
+    // socket, so it can't be forged by the client - unlike the leftmost
+    // entries, which are whatever the caller put in the header.
+    const forwardedFor = request.headers.get('x-forwarded-for')
+    const ip = forwardedFor?.split(',').map((part) => part.trim()).filter(Boolean).pop() || 'unknown'
     if (isRateLimited(ip)) {
       return NextResponse.json(
         { error: 'Too many signup attempts. Try again later.' },
@@ -52,10 +65,14 @@ export async function POST(request: NextRequest) {
       },
     })
 
-    // Fixed, server-configured origin - never derived from the request's
-    // Host header, which a caller can set to anything and would otherwise
-    // land directly in the confirmation email as the redirect target.
-    const siteUrl = process.env.NEXT_PUBLIC_SITE_URL || request.nextUrl.origin
+    // Fixed, server-configured origin only - never derived from the
+    // request's Host header (request.nextUrl.origin), which a caller can
+    // set to anything and would otherwise land directly in the
+    // confirmation email as the redirect target.
+    const siteUrl = process.env.NEXT_PUBLIC_SITE_URL
+    if (!siteUrl) {
+      throw new Error('NEXT_PUBLIC_SITE_URL must be set')
+    }
 
     const { data, error } = await supabase.auth.signUp({
       email,

@@ -6,9 +6,11 @@ jest.mock('node-cron', () => ({
 }));
 
 const mockGetDueRecurrences = jest.fn();
+const mockMarkRun = jest.fn().mockResolvedValue(undefined);
 jest.mock('../src/services/recurrenceService', () => ({
   RecurrenceService: jest.fn().mockImplementation(() => ({
-    getDueRecurrences: mockGetDueRecurrences
+    getDueRecurrences: mockGetDueRecurrences,
+    markRun: mockMarkRun
   }))
 }));
 
@@ -54,6 +56,7 @@ describe('worker recurrence processing', () => {
     await (global as any).__cronFn();
 
     expect(mockGetDueRecurrences).toHaveBeenCalledTimes(1);
+    expect(mockMarkRun).toHaveBeenCalledTimes(2);
     expect(mockAddTransaction).toHaveBeenCalledTimes(2);
     expect(mockAddTransaction).toHaveBeenCalledWith('user-a', '100 rent', 'expense');
     expect(mockAddTransaction).toHaveBeenCalledWith('user-b', '50 gym', 'expense');

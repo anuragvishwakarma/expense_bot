@@ -21,6 +21,7 @@ export function startWorker(bot: Telegraf<Context>) {
     try {
       const recurrences = await recurrenceService.getDueRecurrences(now);
       for (const rec of recurrences) {
+        await recurrenceService.markRun(rec.id, now);
         await transactionService.addTransaction(
           rec.user_id,
           `${rec.amount} ${rec.description}`,

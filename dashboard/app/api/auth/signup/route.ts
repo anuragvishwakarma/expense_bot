@@ -43,7 +43,7 @@ export async function POST(request: NextRequest) {
     const forwardedFor = request.headers.get('x-forwarded-for')
     const ip = forwardedFor?.split(',').map((part) => part.trim()).filter(Boolean).pop() || 'unknown'
     // TEMP DEBUG - remove once rate-limit-not-tripping-in-prod is diagnosed.
-    console.log(`[signup-debug] pid=${process.pid} ip=${ip} rawXFF="${forwardedFor}" mapSize=${attempts.size} entry=${JSON.stringify(attempts.get(ip))}`)
+    console.log(`[signup-debug] pid=${process.pid} ip=${JSON.stringify(ip)} rawXFF=${JSON.stringify(forwardedFor)} mapSize=${attempts.size} entry=${JSON.stringify(attempts.get(ip))}`)
     if (isRateLimited(ip)) {
       return NextResponse.json(
         { error: 'Too many signup attempts. Try again later.' },

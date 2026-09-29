@@ -45,14 +45,16 @@ function isRateLimited(key: string): boolean {
 
 export async function POST(request: NextRequest) {
   try {
-    // Rightmost entry is appended by our own edge proxy on the connecting
-    // socket, so it can't be forged by the client - unlike the leftmost
-    // entries, which are whatever the caller put in the header.
+    // Railway's edge replaces any client-supplied X-Forwarded-For (a forged
+    // value never shows up) and appends its own node address on the right,
+    // which differs per request. Leftmost entry is the real client; the
+    // rightmost would give every request a fresh bucket.
     const forwardedFor = request.headers.get('x-forwarded-for')
-    const ip = forwardedFor?.split(',').map((part) => part.trim()).filter(Boolean).pop() || 'unknown'
-    // TEMP DEBUG - remove once rate-limit-not-tripping-in-prod is diagnosed.
+    const ip = forwardedFor?.split(',').map((part) => part.trim()).find(Boolean) || 'unknown'
+    // TEMP DEBUG - remove once leftmost-is-client is confirmed in prod.
     const xffParts = forwardedFor ? forwardedFor.split(',').map((p) => fingerprint(p.trim())) : null
-    console.log(`[signup-debug] pid=${process.pid} ipFp=${fingerprint(ip)} xffPartCount=${xffParts?.length ?? 0} xffFps=${JSON.stringify(xffParts)} mapSize=${attempts.size} entry=${JSON.stringify(attempts.get(ip))}`)
+    const realIp = request.headers.get('x-real-ip')
+    console.log(`[signup-debug] pid=${process.pid} ipFp=${fingerprint(ip)} realIpFp=${realIp ? fingerprint(realIp) : null} xffPartCount=${xffParts?.length ?? 0} xffFps=${JSON.stringify(xffParts)} mapSize=${attempts.size} entry=${JSON.stringify(attempts.get(ip))}`)
     if (isRateLimited(ip)) {
       return NextResponse.json(
         { error: 'Too many signup attempts. Try again later.' },

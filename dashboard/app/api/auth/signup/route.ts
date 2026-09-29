@@ -1,13 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createServerClient } from '@supabase/ssr'
-import { createHash, randomBytes } from 'crypto'
-
-// TEMP DEBUG - fingerprint for comparing log lines by equality without
-// printing raw client IPs. Salted per-process and never logged itself,
-// since IPv4 space (~4B) is small enough that an unsalted hash is a
-// rainbow-table lookup, not real anonymization.
-const debugSalt = randomBytes(16).toString('hex')
-const fingerprint = (value: string) => createHash('sha256').update(debugSalt).update(value).digest('hex').slice(0, 8)
 
 const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL!
 const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
@@ -51,10 +43,6 @@ export async function POST(request: NextRequest) {
     // rightmost would give every request a fresh bucket.
     const forwardedFor = request.headers.get('x-forwarded-for')
     const ip = forwardedFor?.split(',').map((part) => part.trim()).find(Boolean) || 'unknown'
-    // TEMP DEBUG - remove once leftmost-is-client is confirmed in prod.
-    const xffParts = forwardedFor ? forwardedFor.split(',').map((p) => fingerprint(p.trim())) : null
-    const realIp = request.headers.get('x-real-ip')
-    console.log(`[signup-debug] pid=${process.pid} ipFp=${fingerprint(ip)} realIpFp=${realIp ? fingerprint(realIp) : null} xffPartCount=${xffParts?.length ?? 0} xffFps=${JSON.stringify(xffParts)} mapSize=${attempts.size} entry=${JSON.stringify(attempts.get(ip))}`)
     if (isRateLimited(ip)) {
       return NextResponse.json(
         { error: 'Too many signup attempts. Try again later.' },

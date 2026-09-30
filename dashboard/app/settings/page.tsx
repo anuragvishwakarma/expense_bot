@@ -54,6 +54,20 @@ export default async function SettingsPage() {
           <LinkTelegramForm />
         )}
       </div>
+
+      <details className="rounded-lg border border-border bg-card p-6">
+        <summary className="cursor-pointer font-heading text-base font-semibold text-foreground">
+          How to create and configure your Telegram bot
+        </summary>
+        <ol className="mt-4 list-decimal space-y-2 pl-5 text-sm text-muted-foreground">
+          <li>Open Telegram and chat with <a href="https://t.me/BotFather" target="_blank" rel="noreferrer" className="text-primary underline">@BotFather</a>.</li>
+          <li>Send <code className="text-foreground">/newbot</code>, then pick a display name and a username ending in <code className="text-foreground">bot</code>.</li>
+          <li>Copy the token BotFather returns (looks like <code className="text-foreground">123456:ABC-DEF...</code>). Keep it secret.</li>
+          <li>Set it as <code className="text-foreground">TELEGRAM_BOT_TOKEN</code> in the bot&apos;s environment (<code className="text-foreground">.env</code> locally, or your host&apos;s variables), then restart the bot.</li>
+          <li>Optional: in BotFather send <code className="text-foreground">/setcommands</code> to show the command menu.</li>
+          <li>Open your bot in Telegram, send <code className="text-foreground">/start</code> then <code className="text-foreground">/link</code>, and enter the code in the form above.</li>
+        </ol>
+      </details>
     </div>
   )
 }

@@ -406,42 +406,62 @@ bot.action(/^en_accset:(.+)$/, async (ctx) => {
 const undoKeyboard = (transactionId: string) =>
   Markup.inlineKeyboard([[Markup.button.callback('↩️ Undo', `tx_undo:${transactionId}`)]]);
 
-const recentList = async (userId: string) => {
-  const rows: any[] = (await transactionService.getTransactions(userId, { limit: 10 })) ?? [];
-  if (rows.length === 0) return { msg: '📭 No entries yet.', kb: undefined };
-  const kb = Markup.inlineKeyboard(
-    rows.map(t => [Markup.button.callback(
-      `${t.type === 'income' ? '+' : '−'}₹${t.amount} ${t.description || t.category?.name || ''} · ${t.date}`.slice(0, 60),
-      `tx_view:${t.id}`
-    )])
-  );
-  return { msg: 'Your last 10 entries. Tap one to delete it:', kb };
+const RECENT_PAGE = 10;
+
+// date = YYYY-MM-DD to show one day only, null for everything
+const recentList = async (userId: string, page: number, date: string | null) => {
+  const rows: any[] = (await transactionService.getTransactions(userId, {
+    limit: RECENT_PAGE + 1, // one extra row tells us whether an Older page exists
+    offset: page * RECENT_PAGE,
+    ...(date && { startDate: date, endDate: date })
+  })) ?? [];
+  const hasMore = rows.length > RECENT_PAGE;
+  const shown = rows.slice(0, RECENT_PAGE);
+  if (shown.length === 0) return { msg: date ? `📭 No entries on ${date}.` : '📭 No entries yet.', kb: undefined };
+
+  const d = date ?? '-';
+  const buttons = shown.map(t => [Markup.button.callback(
+    `${t.type === 'income' ? '+' : '−'}₹${t.amount} ${t.description || t.category?.name || ''} · ${t.date}`.slice(0, 60),
+    `tx_view:${t.id}:${page}:${d}`
+  )]);
+  const nav = [
+    ...(page > 0 ? [Markup.button.callback('« Newer', `tx_list:${page - 1}:${d}`)] : []),
+    ...(hasMore ? [Markup.button.callback('Older »', `tx_list:${page + 1}:${d}`)] : [])
+  ];
+  if (nav.length) buttons.push(nav);
+  const title = date ? `Entries on ${date}` : `Your entries (page ${page + 1})`;
+  return { msg: `${title}. Tap one to delete it:`, kb: Markup.inlineKeyboard(buttons) };
 };
 
 bot.command('recent', async (ctx) => {
   if (!ctx.session.user) return ctx.reply('Please start the bot first with /start');
-  const { msg, kb } = await recentList(ctx.session.user.id);
+  const arg = ctx.message.text.substring(7).trim(); // e.g. "30 oct", "2 days ago", "yesterday"
+  let date: string | null = null;
+  if (arg) {
+    date = extractDate(arg).date;
+    if (!date) return ctx.reply("Couldn't read that date. Try /recent 30 oct, /recent 2 days ago or /recent yesterday");
+  }
+  const { msg, kb } = await recentList(ctx.session.user.id, 0, date);
   return kb ? ctx.reply(msg, kb) : ctx.reply(msg);
 });
 
-bot.action('tx_list', async (ctx) => {
+bot.action(/^tx_list:(\d+):(.+)$/, async (ctx) => {
   if (!ctx.session.user) return ctx.answerCbQuery();
   await ctx.answerCbQuery();
-  const { msg, kb } = await recentList(ctx.session.user.id);
+  const { msg, kb } = await recentList(ctx.session.user.id, parseInt(ctx.match[1], 10), ctx.match[2] === '-' ? null : ctx.match[2]);
   await ctx.editMessageText(msg, kb);
 });
 
-bot.action(/^tx_view:(.+)$/, async (ctx) => {
+bot.action(/^tx_view:([^:]+):(\d+):(.+)$/, async (ctx) => {
   if (!ctx.session.user) return ctx.answerCbQuery();
-  const rows: any[] = (await transactionService.getTransactions(ctx.session.user.id, { limit: 10 })) ?? [];
-  const t = rows.find(r => r.id === ctx.match[1]);
+  const t: any = await transactionService.getTransaction(ctx.session.user.id, ctx.match[1]);
   await ctx.answerCbQuery();
   if (!t) return ctx.editMessageText('Entry not found (already deleted?).');
   await ctx.editMessageText(
     `${t.type === 'income' ? 'Income' : 'Expense'} ₹${t.amount} · ${t.date}\n${t.category?.name ?? ''} · ${t.account?.name ?? ''}${t.description ? `\n"${t.description}"` : ''}`,
     Markup.inlineKeyboard([
       [Markup.button.callback('🗑️ Delete', `tx_delask:${t.id}`)],
-      [Markup.button.callback('« Back', 'tx_list')]
+      [Markup.button.callback('« Back', `tx_list:${ctx.match[2]}:${ctx.match[3]}`)]
     ])
   );
 });
@@ -452,7 +472,7 @@ bot.action(/^tx_delask:(.+)$/, async (ctx) => {
     'Delete this entry? The account balance is adjusted back.',
     Markup.inlineKeyboard([[
       Markup.button.callback('Yes, delete', `tx_undo:${ctx.match[1]}`),
-      Markup.button.callback('Cancel', 'tx_list')
+      Markup.button.callback('Cancel', 'tx_list:0:-')
     ]])
   );
 });

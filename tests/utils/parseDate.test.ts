@@ -5,6 +5,7 @@ const now = new Date('2026-10-03T06:00:00Z'); // 3 Oct 2026 IST
 describe('extractDate', () => {
   it.each([
     ['lunch yesterday', '2026-10-02', 'lunch'],
+    ['lunch today', '2026-10-03', 'lunch'],
     ['dinner 2 days ago', '2026-10-01', 'dinner'],
     ['taxi day before yesterday', '2026-10-01', 'taxi'],
     ['dinner at Achari Spoon on 30 oct', '2026-09-30'.replace('09', '10').replace('2026', '2025'), 'dinner at Achari Spoon'],

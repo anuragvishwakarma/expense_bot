@@ -163,6 +163,18 @@ export class TransactionService {
     return data;
   }
 
+  async getTransaction(userId: string, transactionId: string) {
+    const supabase = getSupabase();
+    const { data, error } = await supabase
+      .from('transactions')
+      .select('*, category:categories(name), account:accounts(name)')
+      .eq('id', transactionId)
+      .eq('user_id', userId)
+      .maybeSingle();
+    if (error) throw error;
+    return data;
+  }
+
   // Deletes an entry and reverses its effect on the account balance.
   // ponytail: delete then balance update are two calls, not atomic.
   async deleteTransaction(userId: string, transactionId: string): Promise<TransactionRow> {

@@ -19,6 +19,9 @@ export function extractDate(text: string, now: Date = new Date()): { date: strin
   let m = text.match(/\b(?:the\s+)?day before yesterday\b/i);
   if (m) return { date: shift(2), text: strip(m) };
 
+  m = text.match(/\btoday\b/i);
+  if (m) return { date: today, text: strip(m) };
+
   m = text.match(/\byesterday\b/i);
   if (m) return { date: shift(1), text: strip(m) };
 

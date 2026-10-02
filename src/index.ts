@@ -489,6 +489,16 @@ bot.action(/^tx_undo:(.+)$/, async (ctx) => {
   }
 });
 
+// Dashboard link
+bot.command('dashboard', (ctx) =>
+  ctx.reply(
+    'Open your dashboard and sign in with your email. Not linked yet? Use /link here to get a code for Settings.',
+    Markup.inlineKeyboard([[
+      Markup.button.url('🌐 Open dashboard', process.env.DASHBOARD_URL || 'https://dashboard-production-4c39.up.railway.app')
+    ]])
+  )
+);
+
 // Help command
 bot.command('help', (ctx) => {
   ctx.reply(HELP_MESSAGE, { parse_mode: 'Markdown' });

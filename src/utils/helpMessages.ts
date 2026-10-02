@@ -47,6 +47,7 @@ Example: /budget Food 5000 9 2026
 /debt delete <id> - Delete a debt
 
 *Dashboard:*
+/dashboard - Open the web dashboard
 /link - Get a one-time code to connect this Telegram account to the web dashboard
 
 *Accounts:*

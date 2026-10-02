@@ -142,8 +142,7 @@ export class TransactionService {
       .from('transactions')
       .select(`
         *,
-        category:categories!inner(name, icon),
-        account:accounts!inner(name, type, currency_code)
+        category:categories!inner(name, icon)
       `)
       .eq('user_id', userId)
       .order('date', { ascending: false })
@@ -167,12 +166,15 @@ export class TransactionService {
     const supabase = getSupabase();
     const { data, error } = await supabase
       .from('transactions')
-      .select('*, category:categories(name), account:accounts(name)')
+      .select('*, category:categories(name)')
       .eq('id', transactionId)
       .eq('user_id', userId)
       .maybeSingle();
     if (error) throw error;
-    return data;
+    if (!data) return null;
+    // Separate lookup: prod has no FK between transactions and accounts, so PostgREST can't embed it
+    const account = data.account_id ? await this.accountService.getAccount(data.account_id, userId) : null;
+    return { ...data, account: account ? { name: account.name } : null };
   }
 
   // Deletes an entry and reverses its effect on the account balance.

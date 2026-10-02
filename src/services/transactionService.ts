@@ -1,5 +1,6 @@
 import { getSupabase } from '../db';
 import { parseAmount } from '../utils/parseAmount';
+import { extractDate } from '../utils/parseDate';
 import { CurrencyService } from './currencyService';
 import { AccountService } from './accountService';
 
@@ -31,7 +32,9 @@ export class TransactionService {
       throw new Error('Invalid amount format. Use: <amount> <currency><description> or <amount> <description>');
     }
     
-    const { amount, currency, remainder: description } = parsed;
+    const { amount, currency, remainder } = parsed;
+    // Backdating: "2 days ago" / "30 oct" in the text sets the date, phrase is dropped from description
+    const { date, text: description } = extractDate(remainder);
     
     // Convert amount to base currency (INR) for storage and reporting
     const amountBase = await this.currencyService.convert(amount, currency, 'INR');
@@ -110,6 +113,7 @@ export class TransactionService {
         currency_code: currency,
         amount_base: amountBase, // converted to base currency (INR)
         description: description || null,
+        ...(date && { date }),
         type
       })
       .select()

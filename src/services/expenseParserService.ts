@@ -29,7 +29,7 @@ export async function parseExpenseText(
         messages: [
           {
             role: 'system',
-            content: `Extract expense line items from the user's message. Return JSON exactly in this shape: {"items": [{"amount": number, "description": string, "category": string}]}. Category must be exactly one of: ${categoryList}. Amount is a plain number, no currency symbol. If the message describes no expenses, return {"items": []}.`
+            content: `Extract expense line items from the user's message. Return JSON exactly in this shape: {"items": [{"amount": number, "description": string, "category": string}]}. Category must be exactly one of: ${categoryList}. Amount is a plain number, no currency symbol. If the message gives a date (e.g. "2 days ago", "yesterday", "30 oct"), keep that exact phrase at the end of each item's description. If the message describes no expenses, return {"items": []}.`
           },
           { role: 'user', content: text }
         ]

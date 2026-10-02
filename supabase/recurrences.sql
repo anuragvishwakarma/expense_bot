@@ -18,7 +18,7 @@ create table recurrences (
 create table user_reminders (
   user_id uuid primary key references users(id) on delete cascade,
   enabled boolean not null default false,
-  reminder_time time not null default '21:00:00', -- time of day in UTC
+  reminder_time time not null default '21:00:00', -- time of day in IST (Asia/Kolkata)
   created_at timestamp with time zone default timezone('utc', now()) not null,
   updated_at timestamp with time zone default timezone('utc', now()) not null
 );

@@ -558,7 +558,7 @@ bot.command('reminder', async (ctx) => {
     }
     try {
       await reminderService.setPreference(ctx.session.user.id, true, `${time}:00`);
-      ctx.reply(`✅ Daily reminder enabled at ${time}.`);
+      ctx.reply(`✅ Daily reminder enabled at ${time} IST.`);
     } catch (error: unknown) {
       console.error('Set reminder error:', error);
       ctx.reply(`❌ Error: ${error instanceof Error ? error instanceof Error ? error.message : "Unknown error" : 'Unknown error'}`);

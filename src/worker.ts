@@ -40,26 +40,38 @@ export function startWorker(bot: Telegraf<Context>) {
         .select('user_id, enabled, reminder_time')
         .eq('enabled', true);
       if (remErr) throw remErr;
-      for (const { user_id: userId, enabled, reminder_time } of reminders ?? []) {
-        const nowTime = now.toTimeString().slice(0, 5); // HH:MM
-        const remTime = reminder_time.slice(0, 5);
-        if (nowTime === remTime) {
-          const { data: userData, error: userErr } = await supabase
-            .from('users')
-            .select('telegram_id')
-            .eq('id', userId)
-            .single();
-          if (userErr) throw userErr;
-          const telegramId = userData?.telegram_id;
-          if (telegramId) {
-            try {
-              await bot.telegram.sendMessage(
-                telegramId,
-                `⏰ Reminder: It's time to log yesterday's expenses. Use /add or + to record income/expenses.`
-              );
-            } catch (sendErr) {
-              console.error(`Failed to send reminder to user ${userId}:`, sendErr);
-            }
+      // Reminder times are IST (the bot's users are in India)
+      const tz = { timeZone: 'Asia/Kolkata' };
+      const nowTime = now.toLocaleTimeString('en-GB', { ...tz, hour: '2-digit', minute: '2-digit' });
+      const today = now.toLocaleDateString('en-CA', tz);
+      for (const { user_id: userId, reminder_time } of reminders ?? []) {
+        if (nowTime !== reminder_time.slice(0, 5)) continue;
+
+        // Skip users who already logged something today
+        const { count } = await supabase
+          .from('transactions')
+          .select('id', { count: 'exact', head: true })
+          .eq('user_id', userId)
+          .eq('date', today);
+        if (count) continue;
+
+        const { data: userData, error: userErr } = await supabase
+          .from('users')
+          .select('telegram_id')
+          .eq('id', userId)
+          .single();
+        if (userErr) throw userErr;
+        if (!userData?.telegram_id) continue;
+        try {
+          await bot.telegram.sendMessage(
+            userData.telegram_id,
+            `⏰ Did you spend anything today? Reply like "500 lunch" to log it.`
+          );
+        } catch (sendErr: any) {
+          console.error(`Failed to send reminder to user ${userId}:`, sendErr);
+          // 403 = user blocked the bot; stop retrying daily
+          if (sendErr?.response?.error_code === 403) {
+            await supabase.from('user_reminders').update({ enabled: false }).eq('user_id', userId);
           }
         }
       }

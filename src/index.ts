@@ -1,4 +1,4 @@
-import { Telegraf, Context, session } from 'telegraf';
+import { Telegraf, Context, session, Markup } from 'telegraf';
 import { createClient, SupabaseClient } from '@supabase/supabase-js';
 import * as dotenv from 'dotenv';
 import { UserService } from './services/userService';
@@ -12,7 +12,7 @@ import { OCRService } from './services/ocrService';
 import { GoalService } from './services/goalService';
 import { DebtService } from './services/debtService';
 import { VoiceService } from './services/voiceService';
-import { AccountService } from './services/accountService';
+import { AccountService, Account } from './services/accountService';
 import { startWorker } from './worker';
 import { HELP_MESSAGE, ERROR_MESSAGES } from './utils/helpMessages';
 import axios from 'axios';
@@ -29,6 +29,8 @@ interface SessionData {
     first_name?: string;
     last_name?: string;
   } | null;
+  // Button-driven /transfer flow state (in-memory, lost on restart)
+  pendingTransfer?: { from: string; to?: string };
 }
 
 interface BotContext extends Context {
@@ -93,6 +95,116 @@ bot.use(async (ctx, next) => {
 bot.start((ctx) => {
   if (ctx.payload === 'link') return sendLinkCode(ctx);
   return ctx.reply('Welcome to Expense Tracker Bot! Use /help to see available commands.');
+});
+
+// --- Button-driven account flows (no IDs or names to remember) ---
+const accountButtons = (accounts: Account[], prefix: string) =>
+  Markup.inlineKeyboard(
+    accounts.map(a => [Markup.button.callback(`${a.name}  ₹${a.current_balance.toFixed(2)}`, `${prefix}:${a.id}`)])
+  );
+
+const startTransfer = async (ctx: BotContext) => {
+  const accounts = await accountService.listAccounts(ctx.session.user!.id);
+  if (accounts.length < 2) {
+    return ctx.reply('You need at least 2 accounts. Create one with /account add <name> <type>');
+  }
+  ctx.session.pendingTransfer = undefined;
+  return ctx.reply('Transfer from which account?', accountButtons(accounts, 'tf_from'));
+};
+
+bot.command('transfer', async (ctx) => {
+  if (!ctx.session.user) return ctx.reply('Please start the bot first with /start');
+  await startTransfer(ctx);
+});
+
+bot.action('tf_start', async (ctx) => {
+  await ctx.answerCbQuery();
+  if (ctx.session.user) await startTransfer(ctx);
+});
+
+bot.action(/^tf_from:(.+)$/, async (ctx) => {
+  if (!ctx.session.user) return ctx.answerCbQuery();
+  const accounts = await accountService.listAccounts(ctx.session.user.id);
+  const from = ctx.match[1];
+  if (!accounts.some(a => a.id === from)) return ctx.answerCbQuery('Account not found');
+  ctx.session.pendingTransfer = { from };
+  await ctx.answerCbQuery();
+  await ctx.editMessageText('Transfer to which account?', accountButtons(accounts.filter(a => a.id !== from), 'tf_to'));
+});
+
+bot.action(/^tf_to:(.+)$/, async (ctx) => {
+  if (!ctx.session.user) return ctx.answerCbQuery();
+  const pending = ctx.session.pendingTransfer;
+  if (!pending) {
+    await ctx.answerCbQuery();
+    return ctx.reply('That transfer expired. Start again with /transfer');
+  }
+  const accounts = await accountService.listAccounts(ctx.session.user.id);
+  const from = accounts.find(a => a.id === pending.from);
+  const to = accounts.find(a => a.id === ctx.match[1]);
+  if (!from || !to || from.id === to.id) return ctx.answerCbQuery('Account not found');
+  pending.to = to.id;
+  await ctx.answerCbQuery();
+  await ctx.editMessageText(`${from.name} → ${to.name}\nHow much? Send an amount like 10000 (or any /command to cancel).`);
+});
+
+// Must sit before the other text handlers so the amount reply is not parsed as an expense
+bot.on('text', async (ctx, next) => {
+  const pending = ctx.session.pendingTransfer;
+  if (!ctx.session.user || !pending?.to) return next();
+  const text = ctx.message.text.trim();
+  if (text.startsWith('/')) {
+    ctx.session.pendingTransfer = undefined;
+    return next();
+  }
+  const amount = parseFloat(text.replace(/,/g, ''));
+  if (isNaN(amount) || amount <= 0) {
+    return ctx.reply('Send a valid amount like 10000, or any /command to cancel.');
+  }
+  ctx.session.pendingTransfer = undefined;
+  try {
+    const { from, to } = await accountService.transfer(ctx.session.user.id, pending.from, pending.to, amount);
+    ctx.reply(`✅ Transfer complete!\n${from.name} → ${to.name}: ₹${amount.toFixed(2)}`);
+  } catch (error: unknown) {
+    ctx.reply(`❌ ${error instanceof Error ? error.message : 'Unknown error'}`);
+  }
+});
+
+bot.action('acc_del', async (ctx) => {
+  if (!ctx.session.user) return ctx.answerCbQuery();
+  const accounts = await accountService.listAccounts(ctx.session.user.id);
+  await ctx.answerCbQuery();
+  await ctx.editMessageText('Delete which account?', accountButtons(accounts, 'acc_delask'));
+});
+
+bot.action(/^acc_delask:(.+)$/, async (ctx) => {
+  if (!ctx.session.user) return ctx.answerCbQuery();
+  const acc = await accountService.getAccount(ctx.match[1], ctx.session.user.id);
+  await ctx.answerCbQuery();
+  if (!acc) return ctx.editMessageText('Account not found.');
+  await ctx.editMessageText(
+    `Delete ${acc.name} (₹${acc.current_balance.toFixed(2)})? This cannot be undone.`,
+    Markup.inlineKeyboard([[
+      Markup.button.callback('Yes, delete', `acc_delyes:${acc.id}`),
+      Markup.button.callback('Cancel', 'acc_cancel')
+    ]])
+  );
+});
+
+bot.action(/^acc_delyes:(.+)$/, async (ctx) => {
+  if (!ctx.session.user) return ctx.answerCbQuery();
+  await ctx.answerCbQuery();
+  try {
+    await accountService.deleteAccount(ctx.match[1], ctx.session.user.id);
+    await ctx.editMessageText('🗑️ Account deleted.');
+  } catch (error: unknown) {
+    await ctx.editMessageText(`❌ ${error instanceof Error ? error.message : 'Unknown error'}`);
+  }
+});
+
+bot.action('acc_cancel', async (ctx) => {
+  await ctx.answerCbQuery();
+  await ctx.editMessageText('Cancelled.');
 });
 
 // Help command
@@ -768,6 +880,26 @@ bot.command('account', async (ctx) => {
   const parts = text.split(' ');
   const subcmd = parts[0];
 
+  if (!subcmd) {
+    try {
+      const accounts = await accountService.listAccounts(ctx.session.user.id);
+      if (accounts.length === 0) {
+        return ctx.reply('📭 No accounts yet. Create one with /account add <name> <type>');
+      }
+      const lines = accounts.map(a => `• ${a.name} (${a.type}): ₹${a.current_balance.toFixed(2)}`);
+      return ctx.reply(
+        `💳 Your accounts:\n${lines.join('\n')}`,
+        Markup.inlineKeyboard([[
+          Markup.button.callback('🔁 Transfer', 'tf_start'),
+          Markup.button.callback('🗑️ Delete', 'acc_del')
+        ]])
+      );
+    } catch (error: unknown) {
+      console.error('Account overview error:', error);
+      return ctx.reply(`❌ Error: ${error instanceof Error ? error.message : 'Unknown error'}`);
+    }
+  }
+
   if (subcmd === 'add') {
     // /account add <name> <type> [currency] [starting_balance]
     const name = parts[1];
@@ -821,24 +953,8 @@ bot.command('account', async (ctx) => {
       return ctx.reply('Please provide a valid transfer amount');
     }
     try {
-      const fromAccount = await accountService.getAccount(fromId, ctx.session.user.id);
-      const toAccount = await accountService.getAccount(toId, ctx.session.user.id);
-
-      if (!fromAccount || !toAccount) {
-        return ctx.reply('❌ One or both accounts not found');
-      }
-      if (fromAccount.current_balance < amount) {
-        return ctx.reply(`❌ Insufficient balance. Available: ${fromAccount.current_balance.toFixed(2)}`);
-      }
-
-      await accountService.updateAccount(fromId, ctx.session.user.id, {
-        current_balance: fromAccount.current_balance - amount
-      });
-      await accountService.updateAccount(toId, ctx.session.user.id, {
-        current_balance: toAccount.current_balance + amount
-      });
-
-      ctx.reply(`✅ Transfer complete!\n${fromAccount.name} → ${toAccount.name}: ₹${amount.toFixed(2)}`);
+      const { from, to } = await accountService.transfer(ctx.session.user.id, fromId, toId, amount);
+      ctx.reply(`✅ Transfer complete!\n${from.name} → ${to.name}: ₹${amount.toFixed(2)}`);
     } catch (error: unknown) {
       console.error('Transfer error:', error);
       ctx.reply(`❌ Error: ${error instanceof Error ? error.message : "Unknown error"}`);

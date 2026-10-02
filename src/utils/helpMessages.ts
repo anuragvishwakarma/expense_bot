@@ -51,6 +51,8 @@ Example: /budget Food 5000 9 2026
 
 *Accounts:*
 /account add <name> <type> [currency] [starting_balance] - Create an account (types: checking, savings, credit, cash, investment, other)
+/account - Show accounts with Transfer and Delete buttons
+/transfer - Move money between accounts using buttons
 /account list - List your accounts (shows each account's ID)
 /account transfer <from_id> <to_id> <amount> - Transfer between accounts
 /account delete <id> - Delete an account

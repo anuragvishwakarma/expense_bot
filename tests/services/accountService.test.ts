@@ -36,4 +36,9 @@ describe('AccountService', () => {
   it('should have getDefaultAccount method', () => {
     expect(typeof accountService.getDefaultAccount).toBe('function');
   });
+
+  it('transfer rejects bad input before touching the DB', async () => {
+    await expect(accountService.transfer('u', 'a', 'a', 10)).rejects.toThrow('two different');
+    await expect(accountService.transfer('u', 'a', 'b', 0)).rejects.toThrow('positive');
+  });
 });

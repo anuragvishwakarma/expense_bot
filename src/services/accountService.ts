@@ -82,6 +82,21 @@ export class AccountService {
     if (error) throw error;
   }
 
+  // ponytail: two sequential updates, not atomic; move to a Postgres function if concurrent transfers matter
+  async transfer(userId: string, fromId: string, toId: string, amount: number): Promise<{ from: Account; to: Account }> {
+    if (fromId === toId) throw new Error('Pick two different accounts');
+    if (!(amount > 0)) throw new Error('Amount must be positive');
+    const from = await this.getAccount(fromId, userId);
+    const to = await this.getAccount(toId, userId);
+    if (!from || !to) throw new Error('One or both accounts not found');
+    if (from.current_balance < amount) {
+      throw new Error(`Insufficient balance. Available: ${from.current_balance.toFixed(2)}`);
+    }
+    await this.updateAccount(fromId, userId, { current_balance: from.current_balance - amount });
+    await this.updateAccount(toId, userId, { current_balance: to.current_balance + amount });
+    return { from, to };
+  }
+
   // Helper to get default account for a user (first account alphabetically or earliest created)
   async getDefaultAccount(userId: string): Promise<Account | null> {
     const supabase = getSupabase();

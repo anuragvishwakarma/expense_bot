@@ -32,6 +32,8 @@ interface SessionData {
   } | null;
   // Button-driven /transfer flow state (in-memory, lost on restart)
   pendingTransfer?: { from: string; to?: string };
+  // /account add wizard: type chosen, then name, then starting balance
+  pendingAccount?: { type: string; name?: string };
   // Confirmation card for a free-text entry, waiting for Save / edits
   pendingEntry?: PendingEntry;
 }
@@ -120,6 +122,7 @@ const startTransfer = async (ctx: BotContext) => {
     return ctx.reply('You need at least 2 accounts. Create one with /account add <name> <type>');
   }
   ctx.session.pendingTransfer = undefined;
+  ctx.session.pendingAccount = undefined;
   return ctx.reply('Transfer from which account?', accountButtons(accounts, 'tf_from'));
 };
 
@@ -179,6 +182,78 @@ bot.on('text', async (ctx, next) => {
   } catch (error: unknown) {
     ctx.reply(`❌ ${error instanceof Error ? error.message : 'Unknown error'}`);
   }
+});
+
+// --- /account add wizard ---
+const ACCOUNT_TYPES: [string, string][] = [
+  ['🏦 Bank (checking)', 'checking'],
+  ['💰 Savings', 'savings'],
+  ['💳 Credit card', 'credit'],
+  ['💵 Cash', 'cash'],
+  ['📈 Investment', 'investment'],
+  ['Other', 'other']
+];
+
+const startAccountWizard = async (ctx: BotContext) => {
+  ctx.session.pendingTransfer = undefined;
+  ctx.session.pendingAccount = undefined;
+  return ctx.reply(
+    'What kind of account would you like to add?',
+    Markup.inlineKeyboard(chunk(ACCOUNT_TYPES.map(([label, type]) => Markup.button.callback(label, `acc_type:${type}`)), 2))
+  );
+};
+
+const finishAccount = async (ctx: BotContext, balance: number) => {
+  const p = ctx.session.pendingAccount!;
+  ctx.session.pendingAccount = undefined;
+  try {
+    const acc = await accountService.createAccount(ctx.session.user!.id, p.name!, p.type, 'INR', balance);
+    return ctx.reply(`✅ Account created!\n${acc.name} (${acc.type}) · ₹${acc.current_balance.toFixed(2)}`);
+  } catch (error: unknown) {
+    console.error('Create account error:', error);
+    return ctx.reply(`❌ ${error instanceof Error ? error.message : 'Unknown error'}`);
+  }
+};
+
+bot.action('acc_add', async (ctx) => {
+  await ctx.answerCbQuery();
+  if (ctx.session.user) await startAccountWizard(ctx);
+});
+
+bot.action(/^acc_type:(.+)$/, async (ctx) => {
+  const type = ctx.match[1];
+  if (!ctx.session.user || !ACCOUNT_TYPES.some(([, t]) => t === type)) return ctx.answerCbQuery();
+  ctx.session.pendingAccount = { type };
+  await ctx.answerCbQuery();
+  await ctx.editMessageText(`What should this ${type} account be called? Send a name, e.g. HDFC (or any /command to cancel).`);
+});
+
+bot.action('acc_bal_skip', async (ctx) => {
+  await ctx.answerCbQuery();
+  if (!ctx.session.user || !ctx.session.pendingAccount?.name) return;
+  await finishAccount(ctx, 0);
+});
+
+// Must sit before the other text handlers so replies are not parsed as expenses
+bot.on('text', async (ctx, next) => {
+  const p = ctx.session.pendingAccount;
+  if (!ctx.session.user || !p) return next();
+  const text = ctx.message.text.trim();
+  if (text.startsWith('/')) {
+    ctx.session.pendingAccount = undefined;
+    return next();
+  }
+  if (!p.name) {
+    if (text.length > 40) return ctx.reply('That name is too long (max 40 characters). Try a shorter one.');
+    p.name = text;
+    return ctx.reply(
+      `Starting balance for ${p.name}? Send an amount like 20000, or tap Skip.`,
+      Markup.inlineKeyboard([[Markup.button.callback('Skip (₹0)', 'acc_bal_skip')]])
+    );
+  }
+  const balance = parseFloat(text.replace(/,/g, ''));
+  if (!isFinite(balance) || balance < 0) return ctx.reply('Send a valid amount like 20000, or tap Skip.');
+  return finishAccount(ctx, balance);
 });
 
 bot.action('acc_del', async (ctx) => {
@@ -1023,15 +1098,15 @@ bot.command('account', async (ctx) => {
     try {
       const accounts = await accountService.listAccounts(ctx.session.user.id);
       if (accounts.length === 0) {
-        return ctx.reply('📭 No accounts yet. Create one with /account add <name> <type>');
+        return ctx.reply('📭 No accounts yet.', Markup.inlineKeyboard([[Markup.button.callback('➕ Add account', 'acc_add')]]));
       }
       const lines = accounts.map(a => `• ${a.name} (${a.type}): ₹${a.current_balance.toFixed(2)}`);
       return ctx.reply(
         `💳 Your accounts:\n${lines.join('\n')}`,
-        Markup.inlineKeyboard([[
-          Markup.button.callback('🔁 Transfer', 'tf_start'),
-          Markup.button.callback('🗑️ Delete', 'acc_del')
-        ]])
+        Markup.inlineKeyboard([
+          [Markup.button.callback('➕ Add account', 'acc_add')],
+          [Markup.button.callback('🔁 Transfer', 'tf_start'), Markup.button.callback('🗑️ Delete', 'acc_del')]
+        ])
       );
     } catch (error: unknown) {
       console.error('Account overview error:', error);
@@ -1046,6 +1121,7 @@ bot.command('account', async (ctx) => {
     const currency = parts[3] || 'INR';
     const startBalance = parts[4] ? parseFloat(parts[4]) : 0;
 
+    if (!name && !type) return startAccountWizard(ctx);
     if (!name || !type) {
       return ctx.reply('Usage: /account add <name> <type> [currency] [starting_balance]\nTypes: checking, savings, credit, cash, investment, other');
     }

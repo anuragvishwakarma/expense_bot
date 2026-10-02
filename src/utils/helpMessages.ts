@@ -50,7 +50,8 @@ Example: /budget Food 5000 9 2026
 /link - Get a one-time code to connect this Telegram account to the web dashboard
 
 *Accounts:*
-/account add <name> <type> [currency] [starting_balance] - Create an account (types: checking, savings, credit, cash, investment, other)
+/account add - Create an account step by step with buttons
+/account add <name> <type> [currency] [starting_balance] - Create an account in one line (types: checking, savings, credit, cash, investment, other)
 /account - Show accounts with Transfer and Delete buttons
 /transfer - Move money between accounts using buttons
 /account list - List your accounts (shows each account's ID)

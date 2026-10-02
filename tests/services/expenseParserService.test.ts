@@ -45,6 +45,30 @@ describe('parseExpenseText', () => {
     ]);
   });
 
+  it('passes through income type and drops invalid types', async () => {
+    mockedAxios.post.mockResolvedValue({
+      data: {
+        choices: [{
+          message: {
+            content: JSON.stringify({
+              items: [
+                { amount: 60000, description: 'salary day before yesterday', category: 'Salary', type: 'income' },
+                { amount: 50, description: 'tea', category: 'Food', type: 'bogus' }
+              ]
+            })
+          }
+        }]
+      }
+    });
+
+    const result = await parseExpenseText('x', ['Food'], ['Salary']);
+
+    expect(result).toEqual([
+      { amount: 60000, description: 'salary day before yesterday', category: 'Salary', type: 'income' },
+      { amount: 50, description: 'tea', category: 'Food' }
+    ]);
+  });
+
   it('filters out malformed items instead of crashing', async () => {
     mockedAxios.post.mockResolvedValue({
       data: {

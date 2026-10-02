@@ -4,6 +4,7 @@ export interface ParsedExpenseItem {
   amount: number;
   description: string;
   category: string;
+  type?: 'expense' | 'income';
 }
 
 const OPENROUTER_URL = 'https://openrouter.ai/api/v1/chat/completions';
@@ -11,7 +12,8 @@ const MODEL = 'meta-llama/llama-3.1-8b-instruct';
 
 export async function parseExpenseText(
   text: string,
-  candidateCategories: string[]
+  candidateCategories: string[],
+  incomeCategories: string[] = []
 ): Promise<ParsedExpenseItem[] | null> {
   const apiKey = process.env.OPENROUTER_API_KEY;
   if (!apiKey) return null;
@@ -29,7 +31,7 @@ export async function parseExpenseText(
         messages: [
           {
             role: 'system',
-            content: `Extract expense line items from the user's message. Return JSON exactly in this shape: {"items": [{"amount": number, "description": string, "category": string}]}. Category must be exactly one of: ${categoryList}. Amount is a plain number, no currency symbol. If the message gives a date (e.g. "2 days ago", "yesterday", "30 oct"), keep that exact phrase at the end of each item's description. If the message describes no expenses, return {"items": []}.`
+            content: `Extract expense line items from the user's message. Return JSON exactly in this shape: {"items": [{"amount": number, "description": string, "category": string, "type": "expense" | "income"}]}. Type is "income" only when the user received money (salary, refund, etc.), else "expense". For expenses, category must be exactly one of: ${categoryList}.${incomeCategories.length > 0 ? ` For income, category must be exactly one of: ${incomeCategories.join(', ')}.` : ''} Amount is a plain number, no currency symbol. If the message gives a date (e.g. "2 days ago", "yesterday", "30 oct"), keep that exact phrase at the end of each item's description. If the message describes no expenses, return {"items": []}.`
           },
           { role: 'user', content: text }
         ]
@@ -55,7 +57,8 @@ export async function parseExpenseText(
       items.push({
         amount: item.amount,
         description: String(item.description),
-        category: String(item.category)
+        category: String(item.category),
+        ...(item.type === 'income' || item.type === 'expense' ? { type: item.type } : {})
       });
     }
 
@@ -80,7 +83,7 @@ export interface ExpenseSaveResult {
   categoryName: string | null;
 }
 
-const PARSE_FAILURE_MESSAGE = "Couldn't parse that as an expense. Try /add <amount> <description>.";
+export const PARSE_FAILURE_MESSAGE = "Couldn't parse that as an expense. Try /add <amount> <description>.";
 
 export async function processNlpExpenseMessage(
   text: string,
@@ -89,7 +92,13 @@ export async function processNlpExpenseMessage(
 ): Promise<string> {
   const items = await parseExpenseText(text, candidateCategories);
   if (!items) return PARSE_FAILURE_MESSAGE;
+  return saveParsedItems(items, saveExpense);
+}
 
+export async function saveParsedItems(
+  items: ParsedExpenseItem[],
+  saveExpense: (amount: number, description: string, categoryName: string) => Promise<ExpenseSaveResult>
+): Promise<string> {
   let total = 0;
   const savedLines: string[] = [];
   const failedDescriptions: string[] = [];

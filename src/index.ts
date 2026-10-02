@@ -17,7 +17,8 @@ import { startWorker } from './worker';
 import { HELP_MESSAGE, ERROR_MESSAGES } from './utils/helpMessages';
 import axios from 'axios';
 import { parseAmount } from './utils/parseAmount';
-import { processNlpExpenseMessage, formatForAddTransaction } from './services/expenseParserService';
+import { parseExpenseText, saveParsedItems, PARSE_FAILURE_MESSAGE, formatForAddTransaction } from './services/expenseParserService';
+import { extractDate } from './utils/parseDate';
 import { extractFromOcrText } from './utils/extractFromOcrText';
 import { configureProductionBot } from './production';
 
@@ -31,6 +32,16 @@ interface SessionData {
   } | null;
   // Button-driven /transfer flow state (in-memory, lost on restart)
   pendingTransfer?: { from: string; to?: string };
+  // Confirmation card for a free-text entry, waiting for Save / edits
+  pendingEntry?: PendingEntry;
+}
+
+interface PendingEntry {
+  amount: number;
+  description: string; // may still contain a date phrase; addTransaction extracts it
+  type: 'expense' | 'income';
+  category: string | null;
+  accountId: string;
 }
 
 interface BotContext extends Context {
@@ -207,6 +218,114 @@ bot.action('acc_cancel', async (ctx) => {
   await ctx.editMessageText('Cancelled.');
 });
 
+// --- Confirmation card for free-text entries ---
+const chunk = <T,>(arr: T[], n: number) =>
+  Array.from({ length: Math.ceil(arr.length / n) }, (_, i) => arr.slice(i * n, i * n + n));
+
+const entryCard = async (userId: string, e: PendingEntry) => {
+  const { date, text } = extractDate(e.description);
+  const acc = await accountService.getAccount(e.accountId, userId);
+  const when = date
+    ? new Date(`${date}T00:00:00Z`).toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric', timeZone: 'UTC' })
+    : 'Today';
+  const msg =
+    `🧾 ${e.type === 'income' ? 'Income' : 'Expense'} ₹${e.amount.toLocaleString('en-IN')} · ${when}\n` +
+    `${e.category ?? 'Uncategorized'} · ${acc?.name ?? 'Unknown account'}` +
+    (text ? `\n"${text}"` : '');
+  const kb = Markup.inlineKeyboard([
+    [Markup.button.callback('✅ Save', 'en_save')],
+    [Markup.button.callback('Change category', 'en_cat'), Markup.button.callback('Change account', 'en_acc')],
+    [Markup.button.callback('✖ Cancel', 'en_cancel')]
+  ]);
+  return { msg, kb };
+};
+
+const showEntryCard = async (ctx: BotContext) => {
+  const card = await entryCard(ctx.session.user!.id, ctx.session.pendingEntry!);
+  await ctx.editMessageText(card.msg, card.kb);
+};
+
+const expired = async (ctx: BotContext) => {
+  await ctx.answerCbQuery();
+  await ctx.editMessageText('That entry expired. Send it again.');
+};
+
+bot.action('en_save', async (ctx) => {
+  const entry = ctx.session.pendingEntry;
+  if (!ctx.session.user || !entry) return expired(ctx);
+  ctx.session.pendingEntry = undefined;
+  await ctx.answerCbQuery();
+  try {
+    const t = await transactionService.addTransaction(
+      ctx.session.user.id,
+      formatForAddTransaction(entry.amount, entry.description),
+      entry.type,
+      entry.accountId,
+      entry.category ?? undefined
+    );
+    await ctx.editMessageText(
+      `✅ ${entry.type === 'income' ? 'Income' : 'Expense'} saved: ₹${t.amount} · ${t.category_name ?? 'Uncategorized'} · ${t.date}`
+    );
+  } catch (error: unknown) {
+    await ctx.editMessageText(`❌ ${error instanceof Error ? error.message : 'Unknown error'}`);
+  }
+});
+
+bot.action('en_cancel', async (ctx) => {
+  ctx.session.pendingEntry = undefined;
+  await ctx.answerCbQuery();
+  await ctx.editMessageText('Cancelled.');
+});
+
+bot.action('en_cat', async (ctx) => {
+  const entry = ctx.session.pendingEntry;
+  if (!ctx.session.user || !entry) return expired(ctx);
+  const { data } = await supabase
+    .from('categories')
+    .select('id, name')
+    .eq('user_id', ctx.session.user.id)
+    .eq('type', entry.type)
+    .order('name');
+  await ctx.answerCbQuery();
+  await ctx.editMessageText(
+    'Pick a category:',
+    Markup.inlineKeyboard(chunk((data || []).map((c: { id: string; name: string }) => Markup.button.callback(c.name, `en_catset:${c.id}`)), 2))
+  );
+});
+
+bot.action(/^en_catset:(.+)$/, async (ctx) => {
+  const entry = ctx.session.pendingEntry;
+  if (!ctx.session.user || !entry) return expired(ctx);
+  const { data } = await supabase
+    .from('categories')
+    .select('name')
+    .eq('id', ctx.match[1])
+    .eq('user_id', ctx.session.user.id)
+    .eq('type', entry.type)
+    .single();
+  if (!data) return ctx.answerCbQuery('Category not found');
+  entry.category = data.name;
+  await ctx.answerCbQuery();
+  await showEntryCard(ctx);
+});
+
+bot.action('en_acc', async (ctx) => {
+  if (!ctx.session.user || !ctx.session.pendingEntry) return expired(ctx);
+  const accounts = await accountService.listAccounts(ctx.session.user.id);
+  await ctx.answerCbQuery();
+  await ctx.editMessageText('Which account?', accountButtons(accounts, 'en_accset'));
+});
+
+bot.action(/^en_accset:(.+)$/, async (ctx) => {
+  const entry = ctx.session.pendingEntry;
+  if (!ctx.session.user || !entry) return expired(ctx);
+  const acc = await accountService.getAccount(ctx.match[1], ctx.session.user.id);
+  if (!acc) return ctx.answerCbQuery('Account not found');
+  entry.accountId = acc.id;
+  await ctx.answerCbQuery();
+  await showEntryCard(ctx);
+});
+
 // Help command
 bot.command('help', (ctx) => {
   ctx.reply(HELP_MESSAGE, { parse_mode: 'Markdown' });
@@ -271,24 +390,44 @@ bot.on('text', async (ctx, next) => {
 
     const { data: categoryRows } = await supabase
       .from('categories')
-      .select('name')
-      .eq('user_id', userId)
-      .eq('type', 'expense');
+      .select('name, type')
+      .eq('user_id', userId);
 
-    const candidateCategories = (categoryRows || []).map((c: { name: string }) => c.name);
+    const namesOf = (type: string) =>
+      (categoryRows || []).filter((c: { type: string }) => c.type === type).map((c: { name: string }) => c.name);
 
-    const reply = await processNlpExpenseMessage(text, candidateCategories, async (amount, description, categoryName) => {
-      const transaction = await transactionService.addTransaction(
-        userId,
-        formatForAddTransaction(amount, description),
-        'expense',
-        undefined,
-        categoryName
-      );
-      return { amount: transaction.amount, categoryName: transaction.category_name ?? null };
-    });
+    const items = await parseExpenseText(text, namesOf('expense'), namesOf('income'));
+    if (!items) return ctx.reply(PARSE_FAILURE_MESSAGE);
 
-    return ctx.reply(reply);
+    // Several items: save directly as before. One item: show a confirmation card.
+    if (items.length > 1) {
+      const reply = await saveParsedItems(items, async (amount, description, categoryName) => {
+        const transaction = await transactionService.addTransaction(
+          userId,
+          formatForAddTransaction(amount, description),
+          'expense',
+          undefined,
+          categoryName
+        );
+        return { amount: transaction.amount, categoryName: transaction.category_name ?? null };
+      });
+      return ctx.reply(reply);
+    }
+
+    const defaultAccount = await accountService.getDefaultAccount(userId);
+    if (!defaultAccount) {
+      return ctx.reply('You have no account yet. Create one first with /account add <name> <type>');
+    }
+    const item = items[0];
+    ctx.session.pendingEntry = {
+      amount: item.amount,
+      description: item.description,
+      type: item.type ?? 'expense',
+      category: item.category === 'Other' ? null : item.category,
+      accountId: defaultAccount.id
+    };
+    const card = await entryCard(userId, ctx.session.pendingEntry);
+    return ctx.reply(card.msg, card.kb);
   }
 
   return next();

@@ -55,7 +55,7 @@ export default async function SettingsPage() {
         ) : (
           <>
             <ol className="list-decimal space-y-1 pl-5 text-sm text-muted-foreground">
-              <li>Open the bot in Telegram (button below) and tap <strong className="text-foreground">Start</strong>.</li>
+              <li>Open the bot in Telegram and tap <strong className="text-foreground">Start</strong>.</li>
               <li>The bot replies with a link code.</li>
               <li>Enter the code here.</li>
             </ol>

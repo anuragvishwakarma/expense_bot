@@ -339,7 +339,8 @@ bot.action('en_save', async (ctx) => {
       entry.category ?? undefined
     );
     await ctx.editMessageText(
-      `✅ ${entry.type === 'income' ? 'Income' : 'Expense'} saved: ₹${t.amount} · ${t.category_name ?? 'Uncategorized'} · ${t.date}`
+      `✅ ${entry.type === 'income' ? 'Income' : 'Expense'} saved: ₹${t.amount} · ${t.category_name ?? 'Uncategorized'} · ${t.date}`,
+      undoKeyboard(t.id)
     );
   } catch (error: unknown) {
     await ctx.editMessageText(`❌ ${error instanceof Error ? error.message : 'Unknown error'}`);
@@ -401,6 +402,73 @@ bot.action(/^en_accset:(.+)$/, async (ctx) => {
   await showEntryCard(ctx);
 });
 
+// --- Undo / delete entries ---
+const undoKeyboard = (transactionId: string) =>
+  Markup.inlineKeyboard([[Markup.button.callback('↩️ Undo', `tx_undo:${transactionId}`)]]);
+
+const recentList = async (userId: string) => {
+  const rows: any[] = (await transactionService.getTransactions(userId, { limit: 10 })) ?? [];
+  if (rows.length === 0) return { msg: '📭 No entries yet.', kb: undefined };
+  const kb = Markup.inlineKeyboard(
+    rows.map(t => [Markup.button.callback(
+      `${t.type === 'income' ? '+' : '−'}₹${t.amount} ${t.description || t.category?.name || ''} · ${t.date}`.slice(0, 60),
+      `tx_view:${t.id}`
+    )])
+  );
+  return { msg: 'Your last 10 entries. Tap one to delete it:', kb };
+};
+
+bot.command('recent', async (ctx) => {
+  if (!ctx.session.user) return ctx.reply('Please start the bot first with /start');
+  const { msg, kb } = await recentList(ctx.session.user.id);
+  return kb ? ctx.reply(msg, kb) : ctx.reply(msg);
+});
+
+bot.action('tx_list', async (ctx) => {
+  if (!ctx.session.user) return ctx.answerCbQuery();
+  await ctx.answerCbQuery();
+  const { msg, kb } = await recentList(ctx.session.user.id);
+  await ctx.editMessageText(msg, kb);
+});
+
+bot.action(/^tx_view:(.+)$/, async (ctx) => {
+  if (!ctx.session.user) return ctx.answerCbQuery();
+  const rows: any[] = (await transactionService.getTransactions(ctx.session.user.id, { limit: 10 })) ?? [];
+  const t = rows.find(r => r.id === ctx.match[1]);
+  await ctx.answerCbQuery();
+  if (!t) return ctx.editMessageText('Entry not found (already deleted?).');
+  await ctx.editMessageText(
+    `${t.type === 'income' ? 'Income' : 'Expense'} ₹${t.amount} · ${t.date}\n${t.category?.name ?? ''} · ${t.account?.name ?? ''}${t.description ? `\n"${t.description}"` : ''}`,
+    Markup.inlineKeyboard([
+      [Markup.button.callback('🗑️ Delete', `tx_delask:${t.id}`)],
+      [Markup.button.callback('« Back', 'tx_list')]
+    ])
+  );
+});
+
+bot.action(/^tx_delask:(.+)$/, async (ctx) => {
+  await ctx.answerCbQuery();
+  await ctx.editMessageText(
+    'Delete this entry? The account balance is adjusted back.',
+    Markup.inlineKeyboard([[
+      Markup.button.callback('Yes, delete', `tx_undo:${ctx.match[1]}`),
+      Markup.button.callback('Cancel', 'tx_list')
+    ]])
+  );
+});
+
+// Shared by the Undo button (right after saving) and the Yes-delete confirmation
+bot.action(/^tx_undo:(.+)$/, async (ctx) => {
+  if (!ctx.session.user) return ctx.answerCbQuery();
+  await ctx.answerCbQuery();
+  try {
+    const t = await transactionService.deleteTransaction(ctx.session.user.id, ctx.match[1]);
+    await ctx.editMessageText(`↩️ Removed ₹${t.amount} ${t.description ?? ''}. Balance adjusted.`.trim());
+  } catch (error: unknown) {
+    await ctx.editMessageText(`❌ ${error instanceof Error ? error.message : 'Unknown error'}`);
+  }
+});
+
 // Help command
 bot.command('help', (ctx) => {
   ctx.reply(HELP_MESSAGE, { parse_mode: 'Markdown' });
@@ -424,7 +492,7 @@ bot.command('add', async (ctx) => {
       'expense'
     );
 
-    ctx.reply(`✅ Expense recorded!\nAmount: ₹${transaction.amount}\nDescription: ${transaction.description || 'N/A'}`);
+    ctx.reply(`✅ Expense recorded!\nAmount: ₹${transaction.amount}\nDescription: ${transaction.description || 'N/A'}`, undoKeyboard(transaction.id));
   } catch (error: unknown) {
     console.error('Add expense error:', error);
     ctx.reply(`❌ Error: ${error instanceof Error ? error instanceof Error ? error.message : "Unknown error" : 'Unknown error'}`);
@@ -449,7 +517,7 @@ bot.on('text', async (ctx, next) => {
         'income'
       );
 
-      ctx.reply(`✅ Income recorded!\nAmount: ₹${transaction.amount}\nDescription: ${transaction.description || 'N/A'}`);
+      ctx.reply(`✅ Income recorded!\nAmount: ₹${transaction.amount}\nDescription: ${transaction.description || 'N/A'}`, undoKeyboard(transaction.id));
     } catch (error: unknown) {
       console.error('Add income error:', error);
       ctx.reply(`❌ Error: ${error instanceof Error ? error instanceof Error ? error.message : "Unknown error" : 'Unknown error'}`);
@@ -526,7 +594,7 @@ bot.command('income', async (ctx) => {
       'income'
     );
 
-    ctx.reply(`✅ Income recorded!\nAmount: ₹${transaction.amount}\nDescription: ${transaction.description || 'N/A'}`);
+    ctx.reply(`✅ Income recorded!\nAmount: ₹${transaction.amount}\nDescription: ${transaction.description || 'N/A'}`, undoKeyboard(transaction.id));
   } catch (error: unknown) {
     console.error('Add income error:', error);
     ctx.reply(`❌ Error: ${error instanceof Error ? error instanceof Error ? error.message : "Unknown error" : 'Unknown error'}`);

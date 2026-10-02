@@ -162,4 +162,28 @@ export class TransactionService {
     if (error) throw error;
     return data;
   }
+
+  // Deletes an entry and reverses its effect on the account balance.
+  // ponytail: delete then balance update are two calls, not atomic.
+  async deleteTransaction(userId: string, transactionId: string): Promise<TransactionRow> {
+    const supabase = getSupabase();
+    const { data: deleted, error } = await supabase
+      .from('transactions')
+      .delete()
+      .eq('id', transactionId)
+      .eq('user_id', userId)
+      .select()
+      .single();
+    if (error?.code === 'PGRST116' || (!error && !deleted)) throw new Error('Entry not found (already deleted?)');
+    if (error) throw error;
+
+    if (deleted.account_id) {
+      const acc = await this.accountService.getAccount(deleted.account_id, userId);
+      if (acc) {
+        const change = deleted.type === 'income' ? -deleted.amount_base : deleted.amount_base;
+        await this.accountService.updateAccount(acc.id, userId, { current_balance: acc.current_balance + change });
+      }
+    }
+    return deleted;
+  }
 }

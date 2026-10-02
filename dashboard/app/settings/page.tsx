@@ -15,6 +15,8 @@ async function getLinkedTelegramInfo(userId: string) {
   return data
 }
 
+const botUsername = process.env.NEXT_PUBLIC_BOT_USERNAME
+
 export default async function SettingsPage() {
   const authUserId = await getUserIdFromRequest()
 
@@ -51,23 +53,27 @@ export default async function SettingsPage() {
             Linked to {telegramInfo.username ? `@${telegramInfo.username}` : `telegram id ${telegramInfo.telegram_id}`}
           </p>
         ) : (
-          <LinkTelegramForm />
+          <>
+            <ol className="list-decimal space-y-1 pl-5 text-sm text-muted-foreground">
+              <li>Open the bot in Telegram (button below) and tap <strong className="text-foreground">Start</strong>.</li>
+              <li>The bot replies with a link code.</li>
+              <li>Enter the code here.</li>
+            </ol>
+            <LinkTelegramForm />
+          </>
         )}
       </div>
 
-      <details className="rounded-lg border border-border bg-card p-6">
-        <summary className="cursor-pointer font-heading text-base font-semibold text-foreground">
-          How to create and configure your Telegram bot
-        </summary>
-        <ol className="mt-4 list-decimal space-y-2 pl-5 text-sm text-muted-foreground">
-          <li>Open Telegram and chat with <a href="https://t.me/BotFather" target="_blank" rel="noreferrer" className="text-primary underline">@BotFather</a>.</li>
-          <li>Send <code className="text-foreground">/newbot</code>, then pick a display name and a username ending in <code className="text-foreground">bot</code>.</li>
-          <li>Copy the token BotFather returns (looks like <code className="text-foreground">123456:ABC-DEF...</code>). Keep it secret.</li>
-          <li>Set it as <code className="text-foreground">TELEGRAM_BOT_TOKEN</code> in the bot&apos;s environment (<code className="text-foreground">.env</code> locally, or your host&apos;s variables), then restart the bot.</li>
-          <li>Optional: in BotFather send <code className="text-foreground">/setcommands</code> to show the command menu.</li>
-          <li>Open your bot in Telegram, send <code className="text-foreground">/start</code> then <code className="text-foreground">/link</code>, and enter the code in the form above.</li>
-        </ol>
-      </details>
+      {!telegramInfo && botUsername && (
+        <a
+          href={`https://t.me/${botUsername}?start=link`}
+          target="_blank"
+          rel="noreferrer"
+          className="inline-block rounded-md bg-primary px-4 py-2 text-sm font-medium text-primary-foreground hover:bg-primary/90 transition-colors"
+        >
+          Open @{botUsername} in Telegram
+        </a>
+      )}
     </div>
   )
 }

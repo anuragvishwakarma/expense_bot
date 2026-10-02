@@ -90,7 +90,10 @@ bot.use(async (ctx, next) => {
 });
 
 // Start command
-bot.start((ctx) => ctx.reply('Welcome to Expense Tracker Bot! Use /help to see available commands.'));
+bot.start((ctx) => {
+  if (ctx.payload === 'link') return sendLinkCode(ctx);
+  return ctx.reply('Welcome to Expense Tracker Bot! Use /help to see available commands.');
+});
 
 // Help command
 bot.command('help', (ctx) => {
@@ -858,7 +861,7 @@ bot.command('account', async (ctx) => {
 });
 
 // Link dashboard account command
-bot.command('link', async (ctx) => {
+const sendLinkCode = async (ctx: BotContext) => {
   if (!ctx.session.user) {
     return ctx.reply('Please start the bot first with /start');
   }
@@ -870,7 +873,8 @@ bot.command('link', async (ctx) => {
     console.error('Generate link code error:', error);
     ctx.reply(`❌ Error: ${error instanceof Error ? error.message : "Unknown error"}`);
   }
-});
+};
+bot.command('link', sendLinkCode);
 
 // Voice message handler
 bot.on('voice', async (ctx) => {

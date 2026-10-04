@@ -1,4 +1,5 @@
 import { getSupabase } from '../db';
+import { matchCategory } from '../utils/parseBudget';
 
 interface Category {
   name: string;
@@ -19,38 +20,29 @@ export class BudgetService {
   async setBudget(userId: string, categoryName: string, amount: number, month: number, year: number) {
     const supabase = getSupabase();
     
-    // Find or create category
-    const { data: category, error: catError } = await supabase
+    // Reuse an existing category ("food" -> "Food & Dining"); create one only if nothing matches.
+    const { data: cats, error: catError } = await supabase
       .from('categories')
-      .select('id')
+      .select('id, name')
       .eq('user_id', userId)
-      .eq('name', categoryName)
-      .eq('type', 'expense')
-      .maybeSingle();
+      .eq('type', 'expense');
+    if (catError) throw catError;
 
-    let categoryId: string | null = null;
-    
-    if (!category && !catError) {
-      // Create new category if it doesn't exist
+    const matched = matchCategory((cats ?? []).map(c => c.name), categoryName);
+    let categoryId: string;
+    const resolvedName = matched ?? categoryName;
+    if (matched) {
+      categoryId = cats!.find(c => c.name === matched)!.id;
+    } else {
       const { data: newCat, error: createError } = await supabase
         .from('categories')
-        .insert({
-          user_id: userId,
-          name: categoryName,
-          type: 'expense',
-          icon: '💰'
-        })
+        .insert({ user_id: userId, name: categoryName, type: 'expense', icon: '💰' })
         .select('id')
         .single();
-        
       if (createError) throw createError;
       categoryId = newCat.id;
-    } else if (catError) {
-      throw catError;
-    } else {
-      categoryId = category!.id;
     }
-    
+
     // Upsert budget (insert or update)
     const { data, error } = await supabase
       .from('budgets')
@@ -66,7 +58,7 @@ export class BudgetService {
       .single();
 
     if (error) throw error;
-    return data;
+    return { budget: data, categoryName: resolvedName };
   }
 
   async getBudgetStatus(userId: string, month: number, year: number) {

@@ -14,6 +14,7 @@ import { DebtService } from './services/debtService';
 import { VoiceService } from './services/voiceService';
 import { AccountService, Account } from './services/accountService';
 import { startWorker } from './worker';
+import { parseBudgetArgs } from './utils/parseBudget';
 import { HELP_MESSAGE, START_MESSAGE, ERROR_MESSAGES } from './utils/helpMessages';
 import axios from 'axios';
 import { parseAmount } from './utils/parseAmount';
@@ -766,15 +767,11 @@ bot.command('budget', async (ctx) => {
     return ctx.reply('Please start the bot first with /start');
   }
 
-  const args = ctx.message.text.split(' ');
-  if (args.length < 4) {
-    return ctx.reply('Usage: /budget <category> <amount> <month> <year>\nExample: /budget Food 5000 9 2026');
+  const parsed = parseBudgetArgs(ctx.message.text);
+  if (!parsed || !parsed.category) {
+    return ctx.reply('Usage: /budget <category> <amount> <month> [year]\nExample: /budget Food 5000 9 2026 (matches "Food & Dining")');
   }
-
-  const category = args[1];
-  const amount = parseFloat(args[2]);
-  const month = parseInt(args[3]);
-  const year = parseInt(args[4] || new Date().getFullYear().toString());
+  const { category, amount, month, year } = parsed;
 
   if (isNaN(amount) || amount <= 0) {
     return ctx.reply('Please provide a valid budget amount');
@@ -787,7 +784,7 @@ bot.command('budget', async (ctx) => {
   }
 
   try {
-    const budget = await budgetService.setBudget(
+    const { categoryName } = await budgetService.setBudget(
       ctx.session.user.id,
       category,
       amount,
@@ -796,7 +793,7 @@ bot.command('budget', async (ctx) => {
     );
 
     const monthName = new Date(year, month - 1).toLocaleString('default', { month: 'long' });
-    ctx.reply(`✅ Budget set for ${category}!\n${monthName} ${year}: ₹${amount.toFixed(2)}`);
+    ctx.reply(`✅ Budget set for ${categoryName}!\n${monthName} ${year}: ₹${amount.toFixed(2)}`);
   } catch (error: unknown) {
     console.error('Set budget error:', error);
     ctx.reply(`❌ Error setting budget: ${error instanceof Error ? error instanceof Error ? error.message : "Unknown error" : 'Unknown error'}`);

@@ -41,7 +41,8 @@ Example: /income 2000 salary
 /export [start-date] [end-date] - Export transactions as CSV (format: YYYY-MM-DD)
 
 *Budget Management:*
-/budget <category> <amount> <month> <year> - Set a monthly budget
+/budget <category> <amount> <month> [year] - Set a monthly budget
+Category can be a partial or multi-word name: "Food" matches Food & Dining.
 Example: /budget Food 5000 9 2026
 
 /budgetstatus [month] [year] - Check budget status for a month

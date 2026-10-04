@@ -6,7 +6,7 @@ import TopNav from './top-nav'
 
 export default function Layout({ children }: { children: React.ReactNode }) {
   const pathname = usePathname()
-  if (pathname === '/login' || pathname === '/signup') {
+  if (['/login', '/signup', '/forgot-password', '/reset-password', '/privacy', '/terms'].includes(pathname)) {
     return <>{children}</>
   }
 

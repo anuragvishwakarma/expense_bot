@@ -2,6 +2,7 @@ import { redirect } from 'next/navigation'
 import { getServerSupabase } from '@/lib/supabase'
 import { getUserIdFromRequest, getLinkedUserId } from '@/lib/auth'
 import LinkTelegramForm from '@/components/link-telegram-form'
+import DeleteAccountForm from '@/components/delete-account-form'
 
 export const dynamic = 'force-dynamic'
 
@@ -49,9 +50,14 @@ export default async function SettingsPage() {
       <div className="rounded-lg border border-border bg-card p-6 space-y-4">
         <h2 className="font-heading text-base font-semibold text-foreground">Telegram account</h2>
         {telegramInfo ? (
-          <p className="text-sm text-foreground">
-            Linked to {telegramInfo.username ? `@${telegramInfo.username}` : `telegram id ${telegramInfo.telegram_id}`}
-          </p>
+          <div className="space-y-1">
+            <p className="text-sm text-foreground">
+              Linked to {telegramInfo.username ? `@${telegramInfo.username}` : `telegram id ${telegramInfo.telegram_id}`}
+            </p>
+            <p className="text-sm text-muted-foreground">
+              To switch to a different login, send <code className="text-foreground">/unlink</code> to the bot first.
+            </p>
+          </div>
         ) : (
           <>
             <ol className="list-decimal space-y-1 pl-5 text-sm text-muted-foreground">
@@ -74,6 +80,15 @@ export default async function SettingsPage() {
           Open @{botUsername} in Telegram
         </a>
       )}
+
+      <div className="rounded-lg border border-destructive/30 bg-card p-6 space-y-3">
+        <h2 className="font-heading text-base font-semibold text-foreground">Delete account</h2>
+        <p className="text-sm text-muted-foreground">
+          Permanently deletes your login and all your entries, accounts, budgets, goals, debts and recurring items.
+          This cannot be undone. Send <code className="text-foreground">/export</code> to the bot first if you want a copy.
+        </p>
+        <DeleteAccountForm />
+      </div>
     </div>
   )
 }

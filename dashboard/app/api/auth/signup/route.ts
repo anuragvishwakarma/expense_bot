@@ -50,7 +50,9 @@ export async function POST(request: NextRequest) {
       )
     }
 
-    const { email, password } = await request.json()
+    const body = await request.json().catch(() => null)
+    const email = typeof body?.email === 'string' ? body.email : ''
+    const password = typeof body?.password === 'string' ? body.password : ''
 
     if (!email || !password) {
       return NextResponse.json({ error: 'Email and password are required' }, { status: 400 })
@@ -101,9 +103,7 @@ export async function POST(request: NextRequest) {
       message: data.session ? 'Account created' : CONFIRM_MESSAGE,
     })
   } catch (error) {
-    return NextResponse.json(
-      { error: error instanceof Error ? error.message : 'Sign up failed' },
-      { status: 500 }
-    )
+    console.error('Sign up failed:', error)
+    return NextResponse.json({ error: 'Sign up failed' }, { status: 500 })
   }
 }

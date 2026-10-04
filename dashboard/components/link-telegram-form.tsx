@@ -53,7 +53,7 @@ export default function LinkTelegramForm(): React.ReactElement {
           onChange={(e) => setCode(e.target.value)}
           disabled={loading}
           className="flex-1 px-4 py-2 border border-input rounded-lg bg-card text-foreground focus:outline-none focus:ring-2 focus:ring-ring focus:border-transparent disabled:opacity-60"
-          placeholder="123456"
+          placeholder="12345678"
           required
         />
         <button

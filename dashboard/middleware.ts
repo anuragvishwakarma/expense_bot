@@ -4,7 +4,8 @@ import { createServerClient } from '@supabase/ssr'
 const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL!
 const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
 
-const publicRoutes = ['/login', '/signup']
+// /reset-password checks the session itself so it can explain an expired link
+const publicRoutes = ['/login', '/signup', '/forgot-password', '/reset-password', '/privacy', '/terms']
 
 export async function middleware(request: NextRequest) {
   const pathname = request.nextUrl.pathname
@@ -68,6 +69,6 @@ export async function middleware(request: NextRequest) {
 
 export const config = {
   matcher: [
-    '/((?!_next|login|signup|favicon|static|public|api).*)',
+    '/((?!_next|login|signup|forgot-password|reset-password|privacy|terms|auth/callback|favicon|static|public|api).*)',
   ],
 }

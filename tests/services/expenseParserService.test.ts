@@ -69,6 +69,16 @@ describe('parseExpenseText', () => {
     ]);
   });
 
+  it('treats money the user sent as an expense even if the model says income', async () => {
+    mockedAxios.post.mockResolvedValue({
+      data: { choices: [{ message: { content: JSON.stringify({ items: [{ amount: 5000, description: 'Shared to wife', category: 'Business', type: 'income' }] }) } }] }
+    });
+
+    const result = await parseExpenseText('sent 5000 to wife for business', ['Food'], ['Business']);
+
+    expect(result).toEqual([{ amount: 5000, description: 'Shared to wife', category: 'Other', type: 'expense' }]);
+  });
+
   it('filters out malformed items instead of crashing', async () => {
     mockedAxios.post.mockResolvedValue({
       data: {

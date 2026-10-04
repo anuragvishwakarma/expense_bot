@@ -10,6 +10,10 @@ export interface ParsedExpenseItem {
 const OPENROUTER_URL = 'https://openrouter.ai/api/v1/chat/completions';
 const MODEL = 'meta-llama/llama-3.1-8b-instruct';
 
+// The small model sometimes files money the user SENT as income. Income needs an
+// explicit receipt word in the message or the item; everything else is an expense.
+const INCOME_WORDS = /\b(received?|got|earned?|salary|refund(ed)?|credited|bonus|cashback|interest|dividends?|income|reimburse\w*|paid me|sent me)\b/i;
+
 export async function parseExpenseText(
   text: string,
   candidateCategories: string[],
@@ -31,7 +35,7 @@ export async function parseExpenseText(
         messages: [
           {
             role: 'system',
-            content: `Extract expense line items from the user's message. Return JSON exactly in this shape: {"items": [{"amount": number, "description": string, "category": string, "type": "expense" | "income"}]}. Type is "income" only when the user received money (salary, refund, etc.), else "expense". For expenses, category must be exactly one of: ${categoryList}.${incomeCategories.length > 0 ? ` For income, category must be exactly one of: ${incomeCategories.join(', ')}.` : ''} Amount is a plain number, no currency symbol. If the message gives a date (e.g. "2 days ago", "yesterday", "30 oct"), keep that exact phrase at the end of each item's description. If the message describes no expenses, return {"items": []}.`
+            content: `Extract expense line items from the user's message. Return JSON exactly in this shape: {"items": [{"amount": number, "description": string, "category": string, "type": "expense" | "income"}]}. Type is "income" only when the user received money (salary, refund, etc.), else "expense". Sending, sharing, giving, lending or paying money to someone is always "expense". For expenses, category must be exactly one of: ${categoryList}.${incomeCategories.length > 0 ? ` For income, category must be exactly one of: ${incomeCategories.join(', ')}.` : ''} Amount is a plain number, no currency symbol. If the message gives a date (e.g. "2 days ago", "yesterday", "30 oct"), keep that exact phrase at the end of each item's description. If the message describes no expenses, return {"items": []}.`
           },
           { role: 'user', content: text }
         ]
@@ -54,12 +58,14 @@ export async function parseExpenseText(
     const items: ParsedExpenseItem[] = [];
     for (const item of parsed.items) {
       if (typeof item?.amount !== 'number' || !item.description || !item.category) continue;
-      items.push({
-        amount: item.amount,
-        description: String(item.description),
-        category: String(item.category),
-        ...(item.type === 'income' || item.type === 'expense' ? { type: item.type } : {})
-      });
+      const description = String(item.description);
+      let category = String(item.category);
+      let type: 'income' | 'expense' | undefined = item.type === 'income' || item.type === 'expense' ? item.type : undefined;
+      if (type === 'income' && !INCOME_WORDS.test(`${text} ${description}`)) {
+        type = 'expense';
+        if (!candidateCategories.includes(category)) category = 'Other';
+      }
+      items.push({ amount: item.amount, description, category, ...(type ? { type } : {}) });
     }
 
     return items.length > 0 ? items : null;

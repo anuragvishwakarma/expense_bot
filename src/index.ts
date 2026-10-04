@@ -323,6 +323,7 @@ const entryCard = async (userId: string, e: PendingEntry) => {
   const kb = Markup.inlineKeyboard([
     [Markup.button.callback('✅ Save', 'en_save')],
     [Markup.button.callback('Change category', 'en_cat'), Markup.button.callback('Change account', 'en_acc')],
+    [Markup.button.callback(e.type === 'income' ? '🔁 It was an expense' : '🔁 It was income', 'en_type')],
     [Markup.button.callback('✖ Cancel', 'en_cancel')]
   ]);
   return { msg, kb };
@@ -394,6 +395,15 @@ bot.action(/^en_catset:(.+)$/, async (ctx) => {
     .single();
   if (!data) return ctx.answerCbQuery('Category not found');
   entry.category = data.name;
+  await ctx.answerCbQuery();
+  await showEntryCard(ctx);
+});
+
+bot.action('en_type', async (ctx) => {
+  const entry = ctx.session.pendingEntry;
+  if (!ctx.session.user || !entry) return expired(ctx);
+  entry.type = entry.type === 'income' ? 'expense' : 'income';
+  entry.category = null; // expense and income categories are separate lists
   await ctx.answerCbQuery();
   await showEntryCard(ctx);
 });

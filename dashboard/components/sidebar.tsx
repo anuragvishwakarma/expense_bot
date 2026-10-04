@@ -44,13 +44,14 @@ export default function Sidebar() {
             )
           })}
         </div>
-        <Link
+        {/* plain <a>: a <Link> prefetches /logout in prod, which signs the user out */}
+        <a
           href="/logout"
           className="mt-auto flex items-center gap-3 px-3 py-2 rounded-md text-sm font-medium text-sidebar-foreground/80 hover:bg-sidebar-accent hover:text-sidebar-accent-foreground transition-colors border-t border-sidebar-border pt-4"
         >
           <LogOut className="h-4 w-4" strokeWidth={2} />
           <span>Logout</span>
-        </Link>
+        </a>
       </nav>
     </aside>
   )

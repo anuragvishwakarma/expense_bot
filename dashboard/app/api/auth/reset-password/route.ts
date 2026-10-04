@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createServerClient } from '@supabase/ssr'
 import { getUserIdFromRequest } from '@/lib/auth'
+import { clearAccountFailures } from '@/lib/loginThrottle'
 
 const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL!
 const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
@@ -36,11 +37,14 @@ export async function POST(request: NextRequest) {
     },
   })
 
-  const { error } = await supabase.auth.updateUser({ password })
+  const { data, error } = await supabase.auth.updateUser({ password })
   if (error) {
     // e.g. "New password should be different from the old password." or a weak-password rule
     return NextResponse.json({ error: error.message }, { status: 400 })
   }
+
+  // The owner just proved control of the email: lift any lockout an attacker caused on this account
+  if (data?.user?.email) clearAccountFailures(data.user.email)
 
   // A changed password should end every other session (a stolen one, an old device)
   await supabase.auth.signOut({ scope: 'others' })

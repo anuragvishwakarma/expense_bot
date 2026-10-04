@@ -5,9 +5,11 @@ import { safeNext } from '@/lib/authRedirect'
 const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL!
 const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
 
-// Landing point of the password-reset email. Turns the link into a session, then sends the user
-// to the "set a new password" page. Supports both the default PKCE link (?code=, same browser)
-// and the cross-device link (?token_hash=&type=recovery) used if the email template is changed.
+// Landing point of the password-reset email. Turns the link's PKCE code into a session, then sends
+// the user to the "set a new password" page. The code only works in the browser that asked for the
+// reset (it needs the verifier cookie set then), which is what stops a crafted link from signing a
+// victim's browser in as an attacker. A cross-device link (?token_hash=) has no such binding and is
+// deliberately not accepted.
 export async function GET(request: NextRequest) {
   const { searchParams } = request.nextUrl
   const failure = NextResponse.redirect(new URL('/forgot-password?error=expired', request.url))
@@ -23,13 +25,7 @@ export async function GET(request: NextRequest) {
   })
 
   const code = searchParams.get('code')
-  const tokenHash = searchParams.get('token_hash')
-  let error: unknown = new Error('missing code')
-  if (tokenHash && searchParams.get('type') === 'recovery') {
-    ;({ error } = await supabase.auth.verifyOtp({ type: 'recovery', token_hash: tokenHash }))
-  } else if (code) {
-    ;({ error } = await supabase.auth.exchangeCodeForSession(code))
-  }
-
+  if (!code) return failure
+  const { error } = await supabase.auth.exchangeCodeForSession(code)
   return error ? failure : success
 }

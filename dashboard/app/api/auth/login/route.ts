@@ -1,17 +1,10 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createServerClient } from '@supabase/ssr'
-import { createFailureTracker, clientIp } from '@/lib/rateLimit'
+import { clientIp } from '@/lib/rateLimit'
+import { byPair, byIp, byEmail } from '@/lib/loginThrottle'
 
 const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL!
 const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
-
-const WINDOW_MS = 15 * 60 * 1000
-// Three scopes of failed attempts. The per-pair limit stops guessing on one account from one address
-// without letting a stranger lock the owner out (their own address is unaffected). The per-address
-// limit stops one machine trying many accounts. The per-account limit caps a distributed guesser.
-const byPair = createFailureTracker(5, WINDOW_MS)
-const byIp = createFailureTracker(20, WINDOW_MS)
-const byEmail = createFailureTracker(50, WINDOW_MS)
 
 const TOO_MANY = 'Too many failed attempts. Please wait a few minutes and try again, or reset your password.'
 // Only these Supabase messages are shown as they are; anything else becomes a generic failure
@@ -52,10 +45,19 @@ export async function POST(request: NextRequest) {
 
     const { data, error } = await supabase.auth.signInWithPassword({ email, password })
 
+    // The auth provider throttles per server address, and every user shares ours. That is its limit
+    // being hit, not this person's wrong password: say so and do not count it against them.
+    if (error?.status === 429) {
+      console.error('Sign-in throttled by auth provider:', error.code)
+      return NextResponse.json({ error: 'Sign-in is busy right now. Please try again in a minute.' }, { status: 429 })
+    }
+
     if (error || !data.session) {
       byPair.fail(pair)
       byIp.fail(ip)
       byEmail.fail(email)
+      // Hidden from the user, but kept in the server log so a provider-side limit or outage is visible
+      if (error && !SAFE_MESSAGES.has(error.message)) console.error('Sign-in rejected by auth provider:', error.status, error.code)
       const message = error && SAFE_MESSAGES.has(error.message) ? error.message : 'Sign in failed'
       return NextResponse.json({ error: message }, { status: 400 })
     }

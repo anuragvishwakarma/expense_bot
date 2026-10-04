@@ -83,6 +83,21 @@ describe('POST /api/auth/login', () => {
   })
 })
 
+describe('provider throttling', () => {
+  it("tells the user to retry and does not count Supabase's own 429 as their wrong password", async () => {
+    const ip = '203.0.113.200'
+    signIn.mockResolvedValue({ data: { session: null, user: null }, error: { status: 429, code: 'over_request_rate_limit', message: 'rate limit' } })
+    for (let i = 0; i < 8; i++) {
+      const res = await login('busy@x.co', 'whatever', ip)
+      expect(res.status).toBe(429)
+      expect((await res.json()).error).toMatch(/busy right now/)
+    }
+    // eight provider throttles must not have used up this person's five-failure budget
+    signIn.mockResolvedValue(right())
+    expect((await login('busy@x.co', 'correct', ip)).status).toBe(200)
+  })
+})
+
 describe('createFailureTracker', () => {
   it('blocks at max failures, forgets after the window, and resets on success', () => {
     const t = createFailureTracker(2, 1000)

@@ -73,15 +73,13 @@ describe('GET /auth/callback', () => {
     expect(new URL(res.headers.get('location')!).pathname).toBe('/reset-password')
   })
 
-  it('accepts the cross-device recovery link', async () => {
-    await callback(get('token_hash=th&type=recovery'))
-    expect(calls[0]).toEqual({ fn: 'verifyOtp', args: [{ type: 'recovery', token_hash: 'th' }] })
-  })
-
-  it('refuses other token types (signup/magic links must not land here)', async () => {
-    const res = await callback(get('token_hash=th&type=magiclink'))
-    expect(calls).toHaveLength(0)
-    expect(res.headers.get('location')).toContain('/forgot-password?error=expired')
+  it('refuses token_hash links: they are not bound to the requesting browser (login CSRF)', async () => {
+    for (const qs of ['token_hash=th&type=recovery', 'token_hash=th&type=magiclink']) {
+      calls.length = 0
+      const res = await callback(get(qs))
+      expect(calls).toHaveLength(0)
+      expect(res.headers.get('location')).toContain('/forgot-password?error=expired')
+    }
   })
 
   it('sends an expired or reused link to the request page', async () => {
@@ -89,6 +87,7 @@ describe('GET /auth/callback', () => {
     expect((await callback(get('code=abc'))).headers.get('location')).toContain('/forgot-password?error=expired')
     authError = null
     expect((await callback(get(''))).headers.get('location')).toContain('/forgot-password?error=expired')
+    expect(calls.filter(c => c.fn === 'exchangeCodeForSession')).toHaveLength(1) // the empty link never reached Supabase
   })
 
   it('never redirects anywhere but the allowlist (no open redirect)', async () => {

@@ -1,4 +1,4 @@
-import { HELP_MESSAGE, START_MESSAGE, ERROR_MESSAGES } from '../../src/utils/helpMessages';
+import { HELP_MESSAGE, START_MESSAGE, PRIVACY_MESSAGE, ERROR_MESSAGES } from '../../src/utils/helpMessages';
 
 describe('helpMessages', () => {
   it('should contain help message', () => {
@@ -19,5 +19,13 @@ describe('helpMessages', () => {
     expect(ERROR_MESSAGES).toHaveProperty('DATABASE_ERROR');
     expect(ERROR_MESSAGES).toHaveProperty('VALIDATION_ERROR');
     expect(ERROR_MESSAGES).toHaveProperty('GENERAL_ERROR');
+  });
+
+  it('points new users at the privacy policy and describes who receives data', () => {
+    expect(START_MESSAGE).toContain('/privacy');
+    expect(HELP_MESSAGE).toContain('/privacy');
+    for (const word of ['OpenRouter', 'OCR.space', 'Railway', 'Supabase', '/export', '/deletemydata', '/unlink']) {
+      expect(PRIVACY_MESSAGE).toContain(word);
+    }
   });
 });

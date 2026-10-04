@@ -128,11 +128,27 @@ export class UserService {
     return data;
   }
 
+  async isLinked(userId: string): Promise<boolean> {
+    const { data, error } = await getSupabase().from('users').select('auth_user_id').eq('id', userId).single();
+    if (error) throw error;
+    return !!data?.auth_user_id;
+  }
+
+  // Detach the dashboard login and drop any pending code.
+  async unlink(userId: string): Promise<void> {
+    const { error } = await getSupabase()
+      .from('users')
+      .update({ auth_user_id: null, link_code_hash: null, link_code_expires_at: null })
+      .eq('id', userId);
+    if (error) throw error;
+  }
+
   async generateLinkCode(userId: string): Promise<{ code: string; expiresAt: string }> {
     const supabase = getSupabase();
     // CSPRNG, not Math.random(); only the hash is persisted so a DB read
     // never exposes a redeemable code.
-    const code = crypto.randomInt(100000, 1000000).toString();
+    // 8 digits: 10^8 guesses per attempt window instead of 10^6
+    const code = crypto.randomInt(10_000_000, 100_000_000).toString();
     const codeHash = crypto.createHash('sha256').update(code).digest('hex');
     const expiresAt = new Date(Date.now() + 10 * 60 * 1000).toISOString();
 

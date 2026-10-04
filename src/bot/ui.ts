@@ -1,4 +1,5 @@
 import { Markup } from 'telegraf';
+import { todayIST } from '../utils/ist';
 
 export const chunk = <T,>(arr: T[], n: number) =>
   Array.from({ length: Math.ceil(arr.length / n) }, (_, i) => arr.slice(i * n, i * n + n));
@@ -44,10 +45,6 @@ export function parseDateInput(input: string): string | null {
   return !isNaN(d.getTime()) && d.toISOString().slice(0, 10) === s ? s : null;
 }
 
-// Calendar date in IST (the bot's reminder timezone), offset by whole days.
-export function istDate(offsetDays = 0, now = new Date()) {
-  const d = new Date(now.getTime() + offsetDays * 86400000);
-  return d.toLocaleDateString('en-CA', { timeZone: 'Asia/Kolkata' });
-}
+export const istDate = todayIST; // kept for existing imports
 
 export const cancelRow = () => [Markup.button.callback('✖ Cancel', 'w:cancel')];

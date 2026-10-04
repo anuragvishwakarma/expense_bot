@@ -3,6 +3,7 @@ import { BotContext } from './types';
 import { Deps } from './wizards';
 import { startWizard } from './wizard';
 import { inr, monthLabel, progressBar, shiftMonth, istDate } from './ui';
+import { todayIST } from '../utils/ist';
 import { todayMessage, monthlyMessage, budgetStatusMessage } from './reports';
 
 const btn = Markup.button.callback;
@@ -81,7 +82,7 @@ export function registerCards(bot: Telegraf<BotContext>, deps: Deps, legacy: Leg
   // ---------- Reports ----------
   const todayCard = async (ctx: BotContext, edit = false) => {
     const { year, month } = nowYM();
-    const today = new Date().toISOString().split('T')[0]; // matches getDailySummary's date
+    const today = todayIST(); // same IST date getDailySummary uses
     await show(ctx, await todayMessage(deps.reports, uid(ctx)), Markup.inlineKeyboard([
       [btn('📅 This month', `rp_m:${year}:${month}`), btn('📄 Export today', `ex:${today}:${today}`)],
     ]), edit, true);
@@ -113,8 +114,8 @@ export function registerCards(bot: Telegraf<BotContext>, deps: Deps, legacy: Leg
   };
 
   const exportPicker = (ctx: BotContext) => {
-    const today = new Date().toISOString().split('T')[0];
-    const week = new Date(Date.now() - 6 * 86400000).toISOString().split('T')[0];
+    const today = todayIST();
+    const week = todayIST(-6);
     const { year, month } = nowYM();
     const last = shiftMonth(year, month, -1);
     const thisM = monthRange(year, month);
@@ -150,10 +151,11 @@ export function registerCards(bot: Telegraf<BotContext>, deps: Deps, legacy: Leg
   // ---------- Debts ----------
   const debtsCard = async (ctx: BotContext, edit = false) => {
     const debts = (await deps.debts.listDebts(uid(ctx))).sort((a, b) => Number(a.settled) - Number(b.settled));
-    const rows = debts.map(d => [btn(
-      `${d.settled ? '✅' : '⏳'} ${d.type === 'lend' ? 'lent' : 'borrowed'} ${inr(d.amount)} · ${d.counterparty}`.slice(0, 60),
-      `db:${d.id}`
-    )]);
+    const rows = debts.map(d => {
+      const open = d.amount - d.settled_amount;
+      const amount = !d.settled && d.settled_amount > 0 ? `${inr(open)} left of ${inr(d.amount)}` : inr(d.amount);
+      return [btn(`${d.settled ? '✅' : '⏳'} ${d.type === 'lend' ? 'lent' : 'borrowed'} ${amount} · ${d.counterparty}`.slice(0, 60), `db:${d.id}`)];
+    });
     rows.push([btn('💸 I lent', 'db_new:lend'), btn('🤲 I borrowed', 'db_new:borrow')]);
     await show(ctx, debts.length ? '🤝 Your debts. Tap one to settle or delete it:' : '🤝 No debts recorded. Add one:', Markup.inlineKeyboard(rows), edit);
   };

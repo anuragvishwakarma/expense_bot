@@ -13,13 +13,18 @@ import { GoalService } from './services/goalService';
 import { DebtService } from './services/debtService';
 import { VoiceService } from './services/voiceService';
 import { AccountService, Account } from './services/accountService';
+import { AccountDeletionService } from './services/accountDeletionService';
 import { startWorker } from './worker';
 import { parseBudgetArgs } from './utils/parseBudget';
 import { BotContext, PendingEntry } from './bot/types';
-import { registerWizards } from './bot/wizard';
+import { privateOnly } from './bot/privateOnly';
+import { todayIST } from './utils/ist';
+import { alertOwner } from './utils/alert';
+import { startHealthServer } from './health';
+import { registerWizards, startWizard } from './bot/wizard';
 import { buildWizards } from './bot/wizards';
 import { registerCards, buildMenuKeyboard } from './bot/cards';
-import { HELP_MESSAGE, START_MESSAGE, ERROR_MESSAGES } from './utils/helpMessages';
+import { HELP_MESSAGE, START_MESSAGE, PRIVACY_MESSAGE, ERROR_MESSAGES } from './utils/helpMessages';
 import axios from 'axios';
 import { parseAmount } from './utils/parseAmount';
 import { parseExpenseText, saveParsedItems, PARSE_FAILURE_MESSAGE, formatForAddTransaction } from './services/expenseParserService';
@@ -45,6 +50,7 @@ const goalService = new GoalService();
 const debtService = new DebtService();
 const voiceService = new VoiceService();
 const accountService = new AccountService();
+const accountDeletionService = new AccountDeletionService();
 // Pending OCR results map
 const pendingOCR = new Map<string, {amount: number; description: string; date: string}>();
 // Pending voice transcriptions map
@@ -59,6 +65,9 @@ bot.use(session({
     return { user: null };
   }
 }));
+
+// Refuse groups and channels before anything else touches user data
+bot.use(privateOnly());
 
 // Start background worker for recurrences and reminders
 startWorker(bot as unknown as Telegraf<Context>);
@@ -285,6 +294,7 @@ registerWizards(bot, buildWizards({
   reminders: reminderService,
   reports: reportService,
   accounts: accountService,
+  deletion: accountDeletionService,
   undoKeyboard: (id) => undoKeyboard(id)
 }));
 const cards = registerCards(bot, {
@@ -297,6 +307,7 @@ const cards = registerCards(bot, {
   reminders: reminderService,
   reports: reportService,
   accounts: accountService,
+  deletion: accountDeletionService,
   undoKeyboard: (id) => undoKeyboard(id)
 }, {
   accounts: (ctx) => showAccounts(ctx),
@@ -427,7 +438,24 @@ bot.action(/^en_accset:(.+)$/, async (ctx) => {
 
 // --- Undo / delete entries ---
 const undoKeyboard = (transactionId: string) =>
-  Markup.inlineKeyboard([[Markup.button.callback('↩️ Undo', `tx_undo:${transactionId}`)]]);
+  Markup.inlineKeyboard([[
+    Markup.button.callback('↩️ Undo', `tx_undo:${transactionId}`),
+    Markup.button.callback('🏷 Category', `tx_cat:${transactionId}`)
+  ]]);
+
+// Re-file a just-saved entry; the lookup is scoped to the caller so another user's id does nothing
+bot.action(/^tx_cat:(.+)$/, async (ctx) => {
+  if (!ctx.session.user) return ctx.answerCbQuery();
+  const { data: tx } = await supabase
+    .from('transactions')
+    .select('id, type')
+    .eq('id', ctx.match[1])
+    .eq('user_id', ctx.session.user.id)
+    .single();
+  if (!tx) return ctx.answerCbQuery('Entry not found');
+  await ctx.answerCbQuery();
+  return startWizard(ctx, 'tx_category', { txId: tx.id, type: tx.type });
+});
 
 const RECENT_PAGE = 10;
 
@@ -525,10 +553,30 @@ const showDashboard = async (ctx: BotContext) =>
   );
 bot.command('dashboard', showDashboard);
 
+// Privacy summary, with links to the full pages on the dashboard
+bot.command('privacy', (ctx) => {
+  const site = (process.env.DASHBOARD_URL || 'https://dashboard-production-4c39.up.railway.app').replace(/\/$/, '');
+  return ctx.reply(PRIVACY_MESSAGE, Markup.inlineKeyboard([
+    [Markup.button.url('📄 Privacy Policy', `${site}/privacy`), Markup.button.url('📄 Terms', `${site}/terms`)]
+  ]));
+});
+
 // Help command
 const showHelp = async (ctx: BotContext) =>
   ctx.reply(HELP_MESSAGE, { parse_mode: 'Markdown', ...buildMenuKeyboard() });
 bot.command('help', showHelp);
+
+// An entry failed. Missing account is the common first-use case: say what to do and offer the button.
+const entryError = (ctx: BotContext, error: unknown) => {
+  const message = error instanceof Error ? error.message : 'Unknown error';
+  if (/No account found/.test(message)) {
+    return ctx.reply(
+      'You need an account first: it is where your money lives. Create one, then send your entry again.',
+      Markup.inlineKeyboard([[Markup.button.callback('➕ Add account', 'acc_add')]])
+    );
+  }
+  return ctx.reply(`❌ ${message}`);
+};
 
 // Add expense command
 bot.command('add', async (ctx) => {
@@ -546,10 +594,10 @@ bot.command('add', async (ctx) => {
       'expense'
     );
 
-    ctx.reply(`✅ Expense recorded!\nAmount: ₹${transaction.amount}\nDescription: ${transaction.description || 'N/A'}`, undoKeyboard(transaction.id));
+    ctx.reply(`✅ Expense recorded!\nAmount: ₹${transaction.amount}\nDescription: ${transaction.description || 'N/A'}\nCategory: ${transaction.category_name ?? 'Uncategorized'}`, undoKeyboard(transaction.id));
   } catch (error: unknown) {
     console.error('Add expense error:', error);
-    ctx.reply(`❌ Error: ${error instanceof Error ? error instanceof Error ? error.message : "Unknown error" : 'Unknown error'}`);
+    entryError(ctx, error);
   }
 });
 
@@ -571,10 +619,10 @@ bot.on('text', async (ctx, next) => {
         'income'
       );
 
-      ctx.reply(`✅ Income recorded!\nAmount: ₹${transaction.amount}\nDescription: ${transaction.description || 'N/A'}`, undoKeyboard(transaction.id));
+      ctx.reply(`✅ Income recorded!\nAmount: ₹${transaction.amount}\nDescription: ${transaction.description || 'N/A'}\nCategory: ${transaction.category_name ?? 'Uncategorized'}`, undoKeyboard(transaction.id));
     } catch (error: unknown) {
       console.error('Add income error:', error);
-      ctx.reply(`❌ Error: ${error instanceof Error ? error instanceof Error ? error.message : "Unknown error" : 'Unknown error'}`);
+      entryError(ctx, error);
     }
     return;
   }
@@ -598,11 +646,11 @@ bot.on('text', async (ctx, next) => {
 
     // Several items: save directly as before. One item: show a confirmation card.
     if (items.length > 1) {
-      const reply = await saveParsedItems(items, async (amount, description, categoryName) => {
+      const reply = await saveParsedItems(items, async (amount, description, categoryName, type) => {
         const transaction = await transactionService.addTransaction(
           userId,
           formatForAddTransaction(amount, description),
-          'expense',
+          type,
           undefined,
           categoryName
         );
@@ -646,10 +694,10 @@ bot.command('income', async (ctx) => {
       'income'
     );
 
-    ctx.reply(`✅ Income recorded!\nAmount: ₹${transaction.amount}\nDescription: ${transaction.description || 'N/A'}`, undoKeyboard(transaction.id));
+    ctx.reply(`✅ Income recorded!\nAmount: ₹${transaction.amount}\nDescription: ${transaction.description || 'N/A'}\nCategory: ${transaction.category_name ?? 'Uncategorized'}`, undoKeyboard(transaction.id));
   } catch (error: unknown) {
     console.error('Add income error:', error);
-    ctx.reply(`❌ Error: ${error instanceof Error ? error instanceof Error ? error.message : "Unknown error" : 'Unknown error'}`);
+    entryError(ctx, error);
   }
 });
 
@@ -688,7 +736,7 @@ bot.command('export', async (ctx) => {
 
   const args = ctx.message.text.split(' ');
   if (args.length < 2) return cards.exportPicker(ctx);
-  let startDate = new Date().toISOString().split('T')[0]; // Today
+  let startDate = todayIST(); // Today (IST)
   let endDate = startDate;
 
   if (args.length >= 2) {
@@ -832,12 +880,13 @@ bot.command('recur', async (ctx) => {
       if (!['day','week','month'].includes(intervalUnit)) return ctx.reply('Unit must be day, week, or month');
     } else if (cronIdx !== -1) {
       // cron syntax
-      const expression = parts[cronIdx + 1];
+      // A cron expression is several words ("0 9 1 * *"); it runs up to the start/end keywords
+      const stopAt = parts.findIndex((p, i) => i > cronIdx && (p === 'start' || p === 'end'));
+      const expression = parts.slice(cronIdx + 1, stopAt === -1 ? undefined : stopAt).join(' ');
       if (!expression) {
         return ctx.reply('Usage: /recur add <amount> <description> <type> cron <expression> [start YYYY-MM-DD] [end YYYY-MM-DD]');
       }
-      cronExpression = expression;
-      // Validate cron expression? We'll let the service handle it.
+      cronExpression = expression; // the service checks it is valid and not more often than hourly
     } else {
       return ctx.reply('Please specify either "every <value> <unit>" or "cron <expression>"');
     }
@@ -1180,6 +1229,14 @@ const sendLinkCode = async (ctx: BotContext) => {
     return ctx.reply('Please start the bot first with /start');
   }
   try {
+    // A linked profile never has a live code, so a guessed code can only hit someone who is
+    // mid-way through linking for the first time. Switching logins means unlinking first.
+    if (await userService.isLinked(ctx.session.user.id)) {
+      return ctx.reply(
+        '🔗 Your Telegram is already linked to a dashboard login. To connect a different login, unlink first.',
+        Markup.inlineKeyboard([[Markup.button.callback('🔓 Unlink dashboard', 'unlink_ask')]])
+      );
+    }
     const { code, expiresAt } = await userService.generateLinkCode(ctx.session.user.id);
     const expiresInMin = Math.round((new Date(expiresAt).getTime() - Date.now()) / 60000);
     ctx.reply(`🔗 Your dashboard link code: ${code}\nEnter it on the dashboard's Settings page within ${expiresInMin} minutes.`);
@@ -1190,10 +1247,91 @@ const sendLinkCode = async (ctx: BotContext) => {
 };
 bot.command('link', sendLinkCode);
 
+// --- Delete my data: warn, offer an export, then require typing DELETE ---
+bot.command('deletemydata', async (ctx) => {
+  if (!ctx.session.user) return ctx.reply('Please start the bot first with /start');
+  return ctx.reply(
+    '🗑️ Delete everything?\n\nThis permanently erases all your entries, accounts, budgets, goals, debts and recurring items, and your dashboard login if you linked one. It cannot be undone.',
+    Markup.inlineKeyboard([
+      [Markup.button.callback('📄 Export my entries first', 'del_export')],
+      [Markup.button.callback('🗑️ Continue to delete', 'del_start')],
+      [Markup.button.callback('Cancel', 'del_no')]
+    ])
+  );
+});
+bot.action('del_export', async (ctx) => {
+  await ctx.answerCbQuery();
+  if (!ctx.session.user) return;
+  try {
+    const csv = await reportService.exportTransactionsCSV(ctx.session.user.id, '1970-01-01', '2100-12-31');
+    await ctx.replyWithDocument({ source: Buffer.from(csv), filename: 'my_entries.csv' }, { caption: '📄 All your entries. Keep this before deleting.' });
+  } catch (error: unknown) {
+    console.error('Delete-flow export error:', error);
+    await ctx.reply('❌ Could not export. Try /export first.');
+  }
+});
+bot.action('del_start', async (ctx) => {
+  await ctx.answerCbQuery();
+  if (ctx.session.user) await startWizard(ctx, 'delete_all');
+});
+bot.action('del_no', async (ctx) => {
+  await ctx.answerCbQuery();
+  await ctx.editMessageText('Cancelled. Nothing was deleted.');
+});
+
+const askUnlink = async (ctx: BotContext) => {
+  if (!(await userService.isLinked(ctx.session.user!.id))) {
+    return ctx.reply('Your dashboard is not linked. Send /link to connect it.');
+  }
+  return ctx.reply(
+    'Unlink the dashboard? That login will lose access to your data until you send /link again.',
+    Markup.inlineKeyboard([[Markup.button.callback('Yes, unlink', 'unlink_yes'), Markup.button.callback('Cancel', 'unlink_no')]])
+  );
+};
+bot.command('unlink', async (ctx) => {
+  if (!ctx.session.user) return ctx.reply('Please start the bot first with /start');
+  try {
+    await askUnlink(ctx);
+  } catch (error: unknown) {
+    console.error('Unlink prompt error:', error);
+    ctx.reply('❌ Something went wrong. Please try again.');
+  }
+});
+bot.action('unlink_ask', async (ctx) => {
+  await ctx.answerCbQuery();
+  if (ctx.session.user) await askUnlink(ctx);
+});
+bot.action('unlink_yes', async (ctx) => {
+  if (!ctx.session.user) return ctx.answerCbQuery();
+  await ctx.answerCbQuery();
+  try {
+    await userService.unlink(ctx.session.user.id);
+    await ctx.editMessageText('🔓 Dashboard unlinked. Send /link when you want to connect a login again.');
+  } catch (error: unknown) {
+    console.error('Unlink error:', error);
+    await ctx.editMessageText('❌ Could not unlink. Please try again.');
+  }
+});
+bot.action('unlink_no', async (ctx) => {
+  await ctx.answerCbQuery();
+  await ctx.editMessageText('Cancelled. Your dashboard stays linked.');
+});
+
+const MAX_VOICE_SECONDS = 60;
+const MAX_VOICE_BYTES = 5 * 1024 * 1024;
+
 // Voice message handler
 bot.on('voice', async (ctx) => {
   if (!ctx.session.user) {
     return ctx.reply('Please start the bot first with /start');
+  }
+  // Say so up front when voice is not set up, instead of failing after a download
+  if (!voiceService.isConfigured()) {
+    return ctx.reply('🎙️ Voice notes are not switched on yet. Please type it instead, for example /add 250 lunch.');
+  }
+  const voice = ctx.message.voice;
+  if (voice.duration > MAX_VOICE_SECONDS || (voice.file_size ?? 0) > MAX_VOICE_BYTES) {
+    return ctx.reply('🎙️ That voice note is too long. Keep it under a minute and try again.');
   }
   try {
     // Get the voice file link
@@ -1215,7 +1353,8 @@ bot.on('voice', async (ctx) => {
       type = 'income';
       displayText = transcription.substring(1);
     }
-    const preview = `🎙️ *Voice Transcription*\n\nYou said: "${displayText}"\n\nSave this as a ${type}?`;
+    // Plain text: what was said may contain *, _ or backticks that break Markdown
+    const preview = `🎙️ I heard: "${displayText}"\n\nSave this as a ${type}?`;
     await ctx.reply(preview, {
       reply_markup: {
         inline_keyboard: [
@@ -1224,8 +1363,7 @@ bot.on('voice', async (ctx) => {
             { text: '❌ No, cancel', callback_data: 'voice_no' }
           ]
         ]
-      },
-      parse_mode: 'Markdown'
+      }
     });
   } catch (error: unknown) {
     console.error('Voice message handler error:', error);
@@ -1276,8 +1414,25 @@ bot.action(/voice_(yes|no)/, async (ctx) => {
 
 bot.catch((err, ctx) => {
   console.error('Error in bot:', err);
+  alertOwner(bot.telegram, 'Bot handler error', `${ctx.updateType}: ${err instanceof Error ? err.message : String(err)}`);
   ctx.reply(ERROR_MESSAGES.GENERAL_ERROR);
 });
+
+// Last-resort net: log, tell the owner, and (for a true crash) exit so Railway restarts a clean process
+process.on('unhandledRejection', (reason) => {
+  console.error('Unhandled rejection:', reason);
+  alertOwner(bot.telegram, 'Unhandled rejection', reason instanceof Error ? reason.message : String(reason));
+});
+process.on('uncaughtException', async (err) => {
+  console.error('Uncaught exception:', err);
+  await alertOwner(bot.telegram, 'Bot crashed', err.message);
+  process.exit(1);
+});
+
+// Healthcheck for Railway / uptime monitors; only when a port is configured (not in local dev)
+if (process.env.PORT || process.env.HEALTH_PORT) {
+  startHealthServer(Number(process.env.PORT || process.env.HEALTH_PORT));
+}
 
 // Production readiness
 if (process.env.NODE_ENV === 'production') {
@@ -1357,6 +1512,15 @@ bot.action(/ocr_(yes|no)/, async (ctx) => {
     ctx.editMessageText('❌ OCR expense discarded.');
     pendingOCR.delete(userId);
   }
+});
+
+// Anything no handler wanted: say so instead of staying silent
+bot.on('text', (ctx) => {
+  const text = ctx.message.text.trim();
+  if (text.startsWith('/')) {
+    return ctx.reply("I don't know that command. Send /menu for buttons, or /help for the full list.");
+  }
+  return ctx.reply('Not sure what to do with that. Try /add 250 lunch to log an expense, or send /menu.');
 });
 
 // A rolling deploy briefly runs two instances; Telegram answers the newcomer

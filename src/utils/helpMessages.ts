@@ -15,7 +15,17 @@ Log income: +1000 salary
 
 Prefer buttons? Send /menu. Any command without details (like /budget or /goal) walks you through it with buttons.
 Tip: you can also send a voice note or a photo of a receipt.
+By using this bot you agree to the terms and privacy policy: /privacy
 All commands: /help`;
+
+export const PRIVACY_MESSAGE = `🔒 Your data, in short
+
+• I store your Telegram name and ID, and what you record: entries, accounts, budgets, goals, debts and reminders.
+• Free-text messages go to an AI service (OpenRouter) so I can read amounts and categories. Receipt photos go to OCR.space, and voice notes to Google, if you use those.
+• Hosting is Railway (US) and the database is Supabase. No ads, no selling data, no tracking.
+• Get a copy: /export. Delete everything: /deletemydata. Disconnect the dashboard: /unlink.
+
+Full details below.`;
 
 export const HELP_MESSAGE = `
 🤖 *Expense Tracker Bot Help*
@@ -71,6 +81,9 @@ Example: /budget Food 5000 9 2026
 *Dashboard:*
 /dashboard - Open the web dashboard
 /link - Get a one-time code to connect this Telegram account to the web dashboard
+/unlink - Disconnect the dashboard login (to switch to a different one)
+/deletemydata - Permanently delete all your data (offers an export first)
+/privacy - What data is kept, who handles it, and your choices
 
 *Accounts:*
 /account add - Create an account step by step with buttons

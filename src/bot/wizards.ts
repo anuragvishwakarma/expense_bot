@@ -12,6 +12,7 @@ import { RecurrenceService } from '../services/recurrenceService';
 import { ReminderService } from '../services/reminderService';
 import { ReportService } from '../services/reportService';
 import { AccountService } from '../services/accountService';
+import { AccountDeletionService } from '../services/accountDeletionService';
 
 type Kb = ReturnType<typeof Markup.inlineKeyboard>;
 
@@ -25,6 +26,7 @@ export interface Deps {
   reminders: ReminderService;
   reports: ReportService;
   accounts: AccountService;
+  deletion: AccountDeletionService;
   undoKeyboard: (transactionId: string) => Kb;
 }
 
@@ -320,5 +322,41 @@ export function buildWizards(deps: Deps): Wizard[] {
     },
   };
 
-  return [budget, addEntry('expense'), addEntry('income'), goalNew, goalAdd, debtNew, debtSettle, recurNew, reminderTime, exportRange];
+  const txCategory: Wizard = {
+    id: 'tx_category',
+    steps: [
+      {
+        key: 'category',
+        ask: async (ctx, d) => ({
+          text: 'File this entry under which category? Tap one, or type a name.',
+          options: (await categoryNames(ctx, d.type as 'expense' | 'income')).map(n => ({ label: n, value: n })),
+        }),
+        text: shortText(40, 'name'),
+      },
+    ],
+    finish: async (ctx, d) => {
+      const name = await deps.transactions.setCategory(uid(ctx), d.txId as string, d.category as string);
+      return { text: `✅ Filed under ${name}.` };
+    },
+  };
+
+  const deleteAll: Wizard = {
+    id: 'delete_all',
+    steps: [
+      {
+        key: 'confirm',
+        ask: () => ({ text: 'To permanently delete everything, type DELETE (in capitals). Or tap Cancel.' }),
+        text: s => (s === 'DELETE' ? { value: true } : { error: 'Type DELETE in capitals to confirm, or tap Cancel.' }),
+      },
+    ],
+    finish: async ctx => {
+      const { loginDeleted } = await deps.deletion.deleteEverything(uid(ctx));
+      ctx.session.user = null; // the next message starts a brand-new empty profile
+      return {
+        text: `🗑️ All your data is deleted${loginDeleted ? ', including your dashboard login' : ''}. Nothing is kept.\nIf you message me again I will start a fresh, empty profile.`,
+      };
+    },
+  };
+
+  return [deleteAll, txCategory, budget, addEntry('expense'), addEntry('income'), goalNew, goalAdd, debtNew, debtSettle, recurNew, reminderTime, exportRange];
 }

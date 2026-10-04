@@ -6,11 +6,11 @@ jest.mock('node-cron', () => ({
 }));
 
 const mockGetDueRecurrences = jest.fn();
-const mockMarkRun = jest.fn().mockResolvedValue(undefined);
+const mockClaimRun = jest.fn().mockResolvedValue(true);
 jest.mock('../src/services/recurrenceService', () => ({
   RecurrenceService: jest.fn().mockImplementation(() => ({
     getDueRecurrences: mockGetDueRecurrences,
-    markRun: mockMarkRun
+    claimRun: mockClaimRun
   }))
 }));
 
@@ -56,9 +56,34 @@ describe('worker recurrence processing', () => {
     await (global as any).__cronFn();
 
     expect(mockGetDueRecurrences).toHaveBeenCalledTimes(1);
-    expect(mockMarkRun).toHaveBeenCalledTimes(2);
+    expect(mockClaimRun).toHaveBeenCalledTimes(2);
     expect(mockAddTransaction).toHaveBeenCalledTimes(2);
-    expect(mockAddTransaction).toHaveBeenCalledWith('user-a', '100 rent', 'expense');
-    expect(mockAddTransaction).toHaveBeenCalledWith('user-b', '50 gym', 'expense');
+    expect(mockAddTransaction).toHaveBeenCalledWith('user-a', '₹100 rent', 'expense');
+    expect(mockAddTransaction).toHaveBeenCalledWith('user-b', '₹50 gym', 'expense');
+  });
+
+  it('skips an occurrence another instance already claimed (rolling-deploy overlap)', async () => {
+    mockGetDueRecurrences.mockResolvedValue([{ id: 'r1', user_id: 'user-a', amount: 100, description: 'rent', type: 'expense', last_run_at: null }]);
+    mockClaimRun.mockResolvedValueOnce(false);
+
+    startWorker({} as any);
+    await (global as any).__cronFn();
+
+    expect(mockAddTransaction).not.toHaveBeenCalled();
+  });
+
+  it('keeps processing the rest when one recurrence fails, and still sends ₹-prefixed text so "EMI" is not read as a currency', async () => {
+    mockGetDueRecurrences.mockResolvedValue([
+      { id: 'r1', user_id: 'user-a', amount: 100, description: 'EMI', type: 'expense' },
+      { id: 'r2', user_id: 'user-b', amount: 50, description: 'gym', type: 'expense' }
+    ]);
+    mockAddTransaction.mockRejectedValueOnce(new Error('No account found')).mockResolvedValueOnce({});
+
+    startWorker({ telegram: { sendMessage: jest.fn() } } as any);
+    await (global as any).__cronFn();
+
+    expect(mockAddTransaction).toHaveBeenCalledTimes(2);
+    expect(mockAddTransaction).toHaveBeenNthCalledWith(1, 'user-a', '₹100 EMI', 'expense');
+    expect(mockClaimRun).toHaveBeenCalledTimes(2);
   });
 });

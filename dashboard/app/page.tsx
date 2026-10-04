@@ -13,26 +13,33 @@ import RangePicker from '@/components/widgets/RangePicker'
 import GetStarted from '@/components/get-started'
 import { NOT_LINKED, getOnboardingState, isComplete } from '@/lib/onboarding'
 import { getServerSupabase } from '@/lib/supabase'
+import { fetchAll } from '@/lib/fetchAll'
 import { getUserIdFromRequest, getLinkedUserId } from '@/lib/auth'
 import { upcoming } from '@/lib/recurrences'
-import { RANGES, categoryTrend, computeAnalytics, getPeriods, monthlySeries, parseRange, fmt, type RangeKey, type Txn } from '@/lib/analytics'
+import { RANGES, categoryTrend, istNow, computeAnalytics, getPeriods, monthlySeries, parseRange, fmt, type RangeKey, type Txn } from '@/lib/analytics'
 
 export const dynamic = 'force-dynamic'
 
 async function getDashboardData(userId: string, range: RangeKey) {
   const supabase = await getServerSupabase()
-  const now = new Date()
+  const now = istNow() // IST calendar, see istNow
   // Cover the 6-month bar chart, the selected range, and its comparison window.
   const from = [fmt(new Date(now.getFullYear(), now.getMonth() - 5, 1)), getPeriods(range, now).prevStart].sort()[0]
 
   const [txResp, goalsResp, budgetsResp, recResp] = await Promise.all([
-    // ponytail: PostgREST caps at 1000 rows; move aggregation to SQL/RPC if users exceed that in the window
-    supabase
-      .from('transactions')
-      .select('amount, type, date, description, categories(name)')
-      .eq('user_id', userId)
-      .gte('date', from)
-      .lte('date', fmt(now)),
+    // Paged because PostgREST caps each response at 1000 rows; totals must cover the whole window.
+    // ponytail: client-side totals up to 20,000 rows; move to a SQL view/RPC if users go beyond that.
+    fetchAll((lo, hi) =>
+      supabase
+        .from('transactions')
+        .select('amount, type, date, description, categories(name)', { count: 'exact' })
+        .eq('user_id', userId)
+        .gte('date', from)
+        .lte('date', fmt(now))
+        .order('date', { ascending: false })
+        .order('id')
+        .range(lo, hi)
+    ),
     supabase.from('goals').select('*').eq('user_id', userId),
     supabase
       .from('budgets')
@@ -49,7 +56,7 @@ async function getDashboardData(userId: string, range: RangeKey) {
   if (recResp.error) console.error('Error fetching recurrences:', recResp.error)
 
   const catName = (c: unknown) => (Array.isArray(c) ? c[0]?.name : (c as { name?: string } | null)?.name) ?? 'Uncategorized'
-  const txns: Txn[] = (txResp.data ?? []).map(t => ({
+  const txns: Txn[] = (txResp.rows ?? []).map(t => ({
     amount: t.amount,
     type: t.type,
     date: t.date,
@@ -74,9 +81,10 @@ async function getDashboardData(userId: string, range: RangeKey) {
     analytics,
     monthlyData: monthlySeries(txns, now),
     trend: categoryTrend(txns, now),
-    upcoming: upcoming(recResp.data ?? [], now),
+    upcoming: upcoming(recResp.data ?? [], new Date()), // real instant: it converts to IST itself
     budgets,
     goals,
+    truncated: txResp.truncated,
   }
 }
 
@@ -104,7 +112,7 @@ export default async function OverviewPage({
 
   const range = parseRange((await searchParams).range)
   const onboarding = await getOnboardingState(userId)
-  const { analytics: a, monthlyData, trend, upcoming: upcomingItems, budgets, goals } = await getDashboardData(userId, range)
+  const { analytics: a, monthlyData, trend, upcoming: upcomingItems, budgets, goals, truncated } = await getDashboardData(userId, range)
 
   return (
     <div className="space-y-6">
@@ -112,6 +120,11 @@ export default async function OverviewPage({
         <h1 className="font-heading text-2xl font-semibold text-foreground">Dashboard overview</h1>
         <RangePicker active={range} />
       </div>
+      {truncated && (
+        <p className="rounded-lg border border-border bg-card px-4 py-3 text-sm text-muted-foreground">
+          This period has more than 20,000 entries, so these totals cover only the most recent ones.
+        </p>
+      )}
       {!isComplete(onboarding) && <GetStarted state={onboarding} />}
       <SummaryCards
         totalIncome={a.income}

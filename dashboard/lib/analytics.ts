@@ -16,6 +16,22 @@ export interface Txn {
   description?: string | null
 }
 
+export const IST = 'Asia/Kolkata'
+
+// The current moment as a Date whose *local* fields (getFullYear/getDate/...) read IST wall-clock
+// time, whatever timezone the server runs in. Everything below derives dates from local fields,
+// so feeding it this keeps "today" and month boundaries on the IST calendar (Railway runs in UTC,
+// which is a day behind between 00:00 and 05:30 IST).
+export function istNow(real: Date = new Date()): Date {
+  const p: Record<string, number> = {}
+  for (const x of new Intl.DateTimeFormat('en-US', {
+    timeZone: IST, hourCycle: 'h23', year: 'numeric', month: 'numeric', day: 'numeric', hour: 'numeric', minute: 'numeric', second: 'numeric',
+  }).formatToParts(real)) {
+    if (x.type !== 'literal') p[x.type] = Number(x.value)
+  }
+  return new Date(p.year, p.month - 1, p.day, p.hour, p.minute, p.second)
+}
+
 // Local YYYY-MM-DD; toISOString() would shift the day across timezones.
 export const fmt = (d: Date) =>
   `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`

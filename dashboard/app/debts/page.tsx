@@ -83,7 +83,7 @@ export default async function DebtsPage() {
           </div>
         ))}
         {debts.length === 0 && (
-          <p className="text-sm text-muted-foreground">No open debts.</p>
+          <p className="text-sm text-muted-foreground">No open debts. In the bot: /debt lend Sam 500</p>
         )}
       </div>
     </div>

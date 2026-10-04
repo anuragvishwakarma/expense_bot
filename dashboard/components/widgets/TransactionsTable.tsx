@@ -58,7 +58,7 @@ export default function TransactionsTable({ transactions }: { transactions: Tran
           {transactions.length === 0 && (
             <tr>
               <td colSpan={5} className="py-8 text-center text-muted-foreground">
-                No transactions found.
+                No transactions found. Log one in the bot, e.g. /add 250 lunch
               </td>
             </tr>
           )}

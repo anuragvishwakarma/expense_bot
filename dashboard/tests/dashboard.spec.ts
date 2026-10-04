@@ -10,7 +10,7 @@ test.describe('Expense Tracker Dashboard', () => {
   })
 
   test('protected routes redirect to login', async ({ page }) => {
-    const routes = ['/', '/transactions', '/goals', '/debts', '/settings']
+    const routes = ['/', '/transactions', '/goals', '/debts', '/settings', '/guide']
     for (const route of routes) {
       await page.goto(`http://localhost:3000${route}`)
       await expect(page).toHaveURL(/.*login/)
@@ -30,7 +30,7 @@ test.describe('Expense Tracker Dashboard', () => {
   test('sidebar navigation links exist', async ({ page }) => {
     await page.goto('http://localhost:3000/login')
     const links = await page.locator('nav a').all()
-    expect(links.length).toBe(6)
+    expect(links.length).toBe(7)
 
     const hrefs = await Promise.all(links.map(l => l.getAttribute('href')))
     expect(hrefs).toContain('/')
@@ -38,6 +38,7 @@ test.describe('Expense Tracker Dashboard', () => {
     expect(hrefs).toContain('/goals')
     expect(hrefs).toContain('/debts')
     expect(hrefs).toContain('/settings')
+    expect(hrefs).toContain('/guide')
     expect(hrefs).toContain('/logout')
   })
 })

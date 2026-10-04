@@ -4,7 +4,7 @@ import { useEffect, useState } from 'react'
 import Link from 'next/link'
 import { usePathname } from 'next/navigation'
 import { cn } from 'cn'
-import { LayoutDashboard, ClipboardList, TrendingUp, HandCoins, Settings, LogOut, Menu } from 'lucide-react'
+import { LayoutDashboard, ClipboardList, TrendingUp, HandCoins, Settings, BookOpen, LogOut, Menu } from 'lucide-react'
 
 const links = [
   { href: '/', label: 'Overview', icon: LayoutDashboard },
@@ -12,6 +12,7 @@ const links = [
   { href: '/goals', label: 'Goals', icon: TrendingUp },
   { href: '/debts', label: 'Debts', icon: HandCoins },
   { href: '/settings', label: 'Settings', icon: Settings },
+  { href: '/guide', label: 'Guide', icon: BookOpen },
 ]
 
 export default function Sidebar() {

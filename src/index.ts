@@ -1474,9 +1474,20 @@ bot.action(/ocr_(yes|no)/, async (ctx) => {
   }
 });
 
-bot.launch().then(() => {
-  console.log('🤖 Expense Tracker Bot started successfully');
-}).catch((error) => {
-  console.error('❌ Failed to start bot:', error);
-  process.exit(1);
-});
+// A rolling deploy briefly runs two instances; Telegram answers the newcomer
+// with 409 until the old one stops polling. Retry instead of crashing.
+async function launchBot(attempt = 1): Promise<void> {
+  try {
+    await bot.launch(() => console.log('🤖 Expense Tracker Bot started successfully'));
+  } catch (error: any) {
+    if (error?.response?.error_code === 409 && attempt < 12) {
+      console.warn(`⚠️ Telegram 409 conflict, retrying in 5s (attempt ${attempt})`);
+      await new Promise((resolve) => setTimeout(resolve, 5000));
+      return launchBot(attempt + 1);
+    }
+    console.error('❌ Failed to start bot:', error);
+    process.exit(1);
+  }
+}
+
+launchBot();

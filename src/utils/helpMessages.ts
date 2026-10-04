@@ -13,13 +13,14 @@ Log income: +1000 salary
 
 4️⃣ Open the web dashboard for charts and trends: /dashboard
 
+Prefer buttons? Send /menu. Any command without details (like /budget or /goal) walks you through it with buttons.
 Tip: you can also send a voice note or a photo of a receipt.
 All commands: /help`;
 
 export const HELP_MESSAGE = `
 🤖 *Expense Tracker Bot Help*
 
-*New here?* Create an account first with /account add, then log with /add 500 lunch. See /start for a 4-step quickstart.
+*New here?* Create an account first with /account add, then log with /add 500 lunch. See /start for a 4-step quickstart, or /menu for buttons. Commands sent without details open a step-by-step card.
 
 *Basic Commands:*
 /start - Start the bot and register your account

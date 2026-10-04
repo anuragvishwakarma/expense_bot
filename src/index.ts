@@ -15,6 +15,10 @@ import { VoiceService } from './services/voiceService';
 import { AccountService, Account } from './services/accountService';
 import { startWorker } from './worker';
 import { parseBudgetArgs } from './utils/parseBudget';
+import { BotContext, PendingEntry } from './bot/types';
+import { registerWizards } from './bot/wizard';
+import { buildWizards } from './bot/wizards';
+import { registerCards, buildMenuKeyboard } from './bot/cards';
 import { HELP_MESSAGE, START_MESSAGE, ERROR_MESSAGES } from './utils/helpMessages';
 import axios from 'axios';
 import { parseAmount } from './utils/parseAmount';
@@ -22,34 +26,6 @@ import { parseExpenseText, saveParsedItems, PARSE_FAILURE_MESSAGE, formatForAddT
 import { extractDate } from './utils/parseDate';
 import { extractFromOcrText } from './utils/extractFromOcrText';
 import { configureProductionBot } from './production';
-
-interface SessionData {
-  user: {
-    id: string;
-    telegram_id: number;
-    username?: string;
-    first_name?: string;
-    last_name?: string;
-  } | null;
-  // Button-driven /transfer flow state (in-memory, lost on restart)
-  pendingTransfer?: { from: string; to?: string };
-  // /account add wizard: type chosen, then name, then starting balance
-  pendingAccount?: { type: string; name?: string };
-  // Confirmation card for a free-text entry, waiting for Save / edits
-  pendingEntry?: PendingEntry;
-}
-
-interface PendingEntry {
-  amount: number;
-  description: string; // may still contain a date phrase; addTransaction extracts it
-  type: 'expense' | 'income';
-  category: string | null;
-  accountId: string;
-}
-
-interface BotContext extends Context {
-  session: SessionData;
-}
 
 dotenv.config();
 const ocrService = new OCRService();
@@ -108,7 +84,7 @@ bot.use(async (ctx, next) => {
 // Start command
 bot.start((ctx) => {
   if (ctx.payload === 'link') return sendLinkCode(ctx);
-  return ctx.reply(START_MESSAGE);
+  return ctx.reply(START_MESSAGE, buildMenuKeyboard());
 });
 
 // --- Button-driven account flows (no IDs or names to remember) ---
@@ -122,6 +98,7 @@ const startTransfer = async (ctx: BotContext) => {
   if (accounts.length < 2) {
     return ctx.reply('You need at least 2 accounts. Create one with /account add <name> <type>');
   }
+  ctx.session.wizard = undefined;
   ctx.session.pendingTransfer = undefined;
   ctx.session.pendingAccount = undefined;
   return ctx.reply('Transfer from which account?', accountButtons(accounts, 'tf_from'));
@@ -196,6 +173,7 @@ const ACCOUNT_TYPES: [string, string][] = [
 ];
 
 const startAccountWizard = async (ctx: BotContext) => {
+  ctx.session.wizard = undefined;
   ctx.session.pendingTransfer = undefined;
   ctx.session.pendingAccount = undefined;
   return ctx.reply(
@@ -293,6 +271,40 @@ bot.action('acc_cancel', async (ctx) => {
   await ctx.answerCbQuery();
   await ctx.editMessageText('Cancelled.');
 });
+
+// --- Card flows: wizards, menu, goals, debts, recurring, reminder, reports ---
+// Registered before every other text handler so wizard answers are not parsed as expenses.
+// Later-defined helpers are wrapped in lambdas (they do not exist yet at this point).
+registerWizards(bot, buildWizards({
+  supabase,
+  transactions: transactionService,
+  budgets: budgetService,
+  goals: goalService,
+  debts: debtService,
+  recurrences: recurrenceService,
+  reminders: reminderService,
+  reports: reportService,
+  accounts: accountService,
+  undoKeyboard: (id) => undoKeyboard(id)
+}));
+const cards = registerCards(bot, {
+  supabase,
+  transactions: transactionService,
+  budgets: budgetService,
+  goals: goalService,
+  debts: debtService,
+  recurrences: recurrenceService,
+  reminders: reminderService,
+  reports: reportService,
+  accounts: accountService,
+  undoKeyboard: (id) => undoKeyboard(id)
+}, {
+  accounts: (ctx) => showAccounts(ctx),
+  recent: (ctx) => showRecent(ctx),
+  dashboard: (ctx) => showDashboard(ctx),
+  help: (ctx) => showHelp(ctx)
+});
+bot.command('menu', cards.menu);
 
 // --- Confirmation card for free-text entries ---
 const chunk = <T,>(arr: T[], n: number) =>
@@ -434,16 +446,19 @@ const recentList = async (userId: string, page: number, date: string | null) => 
   return { msg: `${title}. Tap one to delete it:`, kb: Markup.inlineKeyboard(buttons) };
 };
 
-bot.command('recent', async (ctx) => {
-  if (!ctx.session.user) return ctx.reply('Please start the bot first with /start');
-  const arg = ctx.message.text.substring(7).trim(); // e.g. "30 oct", "2 days ago", "yesterday"
+const showRecent = async (ctx: BotContext, arg = '') => {
   let date: string | null = null;
   if (arg) {
     date = extractDate(arg).date;
     if (!date) return ctx.reply("Couldn't read that date. Try /recent 30 oct, /recent 2 days ago or /recent yesterday");
   }
-  const { msg, kb } = await recentList(ctx.session.user.id, 0, date);
+  const { msg, kb } = await recentList(ctx.session.user!.id, 0, date);
   return kb ? ctx.reply(msg, kb) : ctx.reply(msg);
+};
+bot.command('recent', async (ctx) => {
+  if (!ctx.session.user) return ctx.reply('Please start the bot first with /start');
+  // e.g. "30 oct", "2 days ago", "yesterday"
+  return showRecent(ctx, ctx.message.text.substring(7).trim());
 });
 
 bot.action(/^tx_list:(\d+):(.+)$/, async (ctx) => {
@@ -491,19 +506,19 @@ bot.action(/^tx_undo:(.+)$/, async (ctx) => {
 });
 
 // Dashboard link
-bot.command('dashboard', (ctx) =>
+const showDashboard = async (ctx: BotContext) =>
   ctx.reply(
     'Open your dashboard and sign in with your email. Not linked yet? Use /link here to get a code for Settings.',
     Markup.inlineKeyboard([[
       Markup.button.url('🌐 Open dashboard', process.env.DASHBOARD_URL || 'https://dashboard-production-4c39.up.railway.app')
     ]])
-  )
-);
+  );
+bot.command('dashboard', showDashboard);
 
 // Help command
-bot.command('help', (ctx) => {
-  ctx.reply(HELP_MESSAGE, { parse_mode: 'Markdown' });
-});
+const showHelp = async (ctx: BotContext) =>
+  ctx.reply(HELP_MESSAGE, { parse_mode: 'Markdown', ...buildMenuKeyboard() });
+bot.command('help', showHelp);
 
 // Add expense command
 bot.command('add', async (ctx) => {
@@ -512,9 +527,7 @@ bot.command('add', async (ctx) => {
   }
 
   const input = ctx.message.text.substring(4).trim(); // Remove '/add '
-  if (!input) {
-    return ctx.reply('Please provide an amount and description. Example: /add 500 lunch');
-  }
+  if (!input) return cards.add(ctx);
 
   try {
     const transaction = await transactionService.addTransaction(
@@ -614,9 +627,7 @@ bot.command('income', async (ctx) => {
   }
 
   const input = ctx.message.text.substring(8).trim(); // Remove '/income '
-  if (!input) {
-    return ctx.reply('Please provide an amount and description. Example: /income 1000 salary');
-  }
+  if (!input) return cards.income(ctx);
 
   try {
     const transaction = await transactionService.addTransaction(
@@ -633,40 +644,7 @@ bot.command('income', async (ctx) => {
 });
 
 // Daily report command
-bot.command('today', async (ctx) => {
-  if (!ctx.session.user) {
-    return ctx.reply('Please start the bot first with /start');
-  }
-
-  try {
-    const summary = await reportService.getDailySummary(ctx.session.user.id);
-
-    let message = `📊 *Today's Summary* (${summary.date})\n\n`;
-    message += `💰 Income: ₹${summary.totalIncome.toFixed(2)}\n`;
-    message += `💸 Expense: ₹${summary.totalExpense.toFixed(2)}\n`;
-    message += `📈 Net: ₹${summary.net.toFixed(2)}\n\n`;
-
-    if (Object.keys(summary.expenseByCategory).length > 0) {
-      message += `*Expenses by Category:*\n`;
-      for (const [category, amount] of Object.entries(summary.expenseByCategory)) {
-        message += `• ${category}: ₹${amount.toFixed(2)}\n`;
-      }
-      message += '\n';
-    }
-
-    if (Object.keys(summary.incomeByCategory).length > 0) {
-      message += `*Income by Category:*\n`;
-      for (const [category, amount] of Object.entries(summary.incomeByCategory)) {
-        message += `• ${category}: ₹${amount.toFixed(2)}\n`;
-      }
-    }
-
-    ctx.reply(message, { parse_mode: 'Markdown' });
-  } catch (error: unknown) {
-    console.error('Today report error:', error);
-    ctx.reply(`❌ Error generating report: ${error instanceof Error ? error instanceof Error ? error.message : "Unknown error" : 'Unknown error'}`);
-  }
-});
+bot.command('today', cards.today);
 
 // Monthly report command
 bot.command('monthly', async (ctx) => {
@@ -675,8 +653,7 @@ bot.command('monthly', async (ctx) => {
   }
 
   const args = ctx.message.text.split(' ');
-  let month = new Date().getMonth() + 1; // Current month (1-12)
-  let year = new Date().getFullYear();
+  let { year, month } = cards.nowYM();
 
   if (args.length >= 2) {
     month = parseInt(args[1]);
@@ -690,34 +667,7 @@ bot.command('monthly', async (ctx) => {
     }
   }
 
-  try {
-    const summary = await reportService.getMonthlySummary(ctx.session.user.id, year, month);
-
-    const monthName = new Date(year, month - 1).toLocaleString('default', { month: 'long' });
-    let message = `📊 *${monthName} ${year} Summary*\n\n`;
-    message += `💰 Income: ₹${summary.totalIncome.toFixed(2)}\n`;
-    message += `💸 Expense: ₹${summary.totalExpense.toFixed(2)}\n`;
-    message += `📈 Net: ₹${summary.net.toFixed(2)}\n\n`;
-
-    if (Object.keys(summary.expenseByCategory).length > 0) {
-      message += `*Top Expense Categories:*\n`;
-      const sortedExpenses = Object.entries(summary.expenseByCategory)
-        .sort((a, b) => b[1] - a[1])
-        .slice(0, 5);
-
-      for (const [category, amount] of sortedExpenses) {
-        message += `• ${category}: ₹${amount.toFixed(2)}\n`;
-      }
-      message += '\n';
-    }
-
-    message += `_Transactions: ${summary.transactionCount}_`;
-
-    ctx.reply(message, { parse_mode: 'Markdown' });
-  } catch (error: unknown) {
-    console.error('Monthly report error:', error);
-    ctx.reply(`❌ Error generating report: ${error instanceof Error ? error instanceof Error ? error.message : "Unknown error" : 'Unknown error'}`);
-  }
+  return cards.monthly(year, month)(ctx);
 });
 
 // Export command
@@ -727,6 +677,7 @@ bot.command('export', async (ctx) => {
   }
 
   const args = ctx.message.text.split(' ');
+  if (args.length < 2) return cards.exportPicker(ctx);
   let startDate = new Date().toISOString().split('T')[0]; // Today
   let endDate = startDate;
 
@@ -767,6 +718,7 @@ bot.command('budget', async (ctx) => {
     return ctx.reply('Please start the bot first with /start');
   }
 
+  if (ctx.message.text.trim().split(/\s+/).length === 1) return cards.budget(ctx);
   const parsed = parseBudgetArgs(ctx.message.text);
   if (!parsed || !parsed.category) {
     return ctx.reply('Usage: /budget <category> <amount> <month> [year]\nExample: /budget Food 5000 9 2026 (matches "Food & Dining")');
@@ -807,8 +759,7 @@ bot.command('budgetstatus', async (ctx) => {
   }
 
   const args = ctx.message.text.split(' ');
-  let month = new Date().getMonth() + 1;
-  let year = new Date().getFullYear();
+  let { year, month } = cards.nowYM();
 
   if (args.length >= 2) {
     month = parseInt(args[1]);
@@ -822,29 +773,7 @@ bot.command('budgetstatus', async (ctx) => {
     }
   }
 
-  try {
-    const status = await budgetService.getBudgetStatus(ctx.session.user.id, month, year);
-
-    const monthName = new Date(year, month - 1).toLocaleString('default', { month: 'long' });
-    let message = `💰 *Budget Status for ${monthName} ${year}*\n\n`;
-
-    if (status.length === 0) {
-      message += 'No budgets set for this month. Use /budget to set budgets.\n';
-    } else {
-      status.forEach(budget => {
-        const statusIcon = budget.overBudget ? '🔴' : budget.percentage > 80 ? '🟡' : '🟢';
-        message += `${statusIcon} ${budget.icon} ${budget.category}\n`;
-        message += `   Budgeted: ₹${budget.budgeted.toFixed(2)}\n`;
-        message += `   Spent: ₹${budget.spent.toFixed(2)}\n`;
-        message += `   Remaining: ₹${budget.remaining.toFixed(2)} (${budget.percentage.toFixed(1)}% used)\n\n`;
-      });
-    }
-
-    ctx.reply(message, { parse_mode: 'Markdown' });
-  } catch (error: unknown) {
-    console.error('Budget status error:', error);
-    ctx.reply(`❌ Error getting budget status: ${error instanceof Error ? error instanceof Error ? error.message : "Unknown error" : 'Unknown error'}`);
-  }
+  return cards.budgetStatus(year, month)(ctx);
 });
 
 // Recurrence commands
@@ -855,6 +784,8 @@ bot.command('recur', async (ctx) => {
   const text = ctx.message.text.substring(6).trim(); // remove '/recur '
   const parts = text.split(' ');
   const subcmd = parts[0];
+
+  if (!subcmd || subcmd === 'list') return cards.recur(ctx);
 
   if (subcmd === 'add') {
     // /recur add <amount> <description> <type> every <value> <unit> [start YYYY-MM-DD] [end YYYY-MM-DD]
@@ -926,29 +857,6 @@ bot.command('recur', async (ctx) => {
       console.error('Create recurrence error:', error);
       ctx.reply(`❌ Error: ${error instanceof Error ? error instanceof Error ? error.message : "Unknown error" : 'Unknown error'}`);
     }
-  } else if (subcmd === 'list') {
-    try {
-      const recs = await recurrenceService.listActive(ctx.session.user.id);
-      if (recs.length === 0) {
-        return ctx.reply('📭 No active recurrences.');
-      }
-      let msg = '🔁 Active recurrences:\n';
-      for (const r of recs) {
-        msg += `ID: ${r.id} | ${r.amount} ${r.description} (${r.type})`;
-        if (r.cron_expression) {
-          msg += ` cron: ${r.cron_expression}`;
-        } else {
-          msg += ` every ${r.interval_value} ${r.interval_unit}`;
-        }
-        if (r.start_date) msg += ` from ${r.start_date}`;
-        if (r.end_date) msg += ` to ${r.end_date}`;
-        msg += '\n';
-      }
-      ctx.reply(msg);
-    } catch (error: unknown) {
-      console.error('List recurrences error:', error);
-      ctx.reply(`❌ Error: ${error instanceof Error ? error instanceof Error ? error.message : "Unknown error" : 'Unknown error'}`);
-    }
   } else if (subcmd === 'delete' || subcmd === 'remove') {
     const id = parts[1];
     if (!id) return ctx.reply('Usage: /recur delete <id>');
@@ -971,6 +879,7 @@ bot.command('reminder', async (ctx) => {
   }
   const args = ctx.message.text.substring(9).trim().split(' ');
   const action = args[0];
+  if (!action) return cards.reminder(ctx);
   if (action === 'on') {
     const time = args[1] ?? '21:00';
     // Validate time format HH:MM
@@ -1006,6 +915,8 @@ bot.command('goal', async (ctx) => {
   const parts = text.split(' ');
   const subcmd = parts[0];
 
+  if (!subcmd || subcmd === 'list') return cards.goals(ctx);
+
   if (subcmd === 'set') {
     // /goal set <name> <target>
     const name = parts[1];
@@ -1022,22 +933,6 @@ bot.command('goal', async (ctx) => {
       ctx.reply(`✅ Goal created!\nName: ${goal.name}\nTarget: ₹${goal.target_amount.toFixed(2)}`);
     } catch (error: unknown) {
       console.error('Create goal error:', error);
-      ctx.reply(`❌ Error: ${error instanceof Error ? error instanceof Error ? error.message : "Unknown error" : 'Unknown error'}`);
-    }
-  } else if (subcmd === 'list') {
-    try {
-      const goals = await goalService.listGoals(ctx.session.user.id);
-      if (goals.length === 0) {
-        return ctx.reply('📭 No goals set yet. Use /goal set to create one.');
-      }
-      let msg = '🎯 Your goals:\n';
-      for (const g of goals) {
-        const progress = (g.saved_amount / g.target_amount) * 100;
-        msg += `• ${g.name}: ₹${g.saved_amount.toFixed(2)} / ₹${g.target_amount.toFixed(2)} (${progress.toFixed(1)}%) | ID: ${g.id}\n`;
-      }
-      ctx.reply(msg);
-    } catch (error: unknown) {
-      console.error('List goals error:', error);
       ctx.reply(`❌ Error: ${error instanceof Error ? error instanceof Error ? error.message : "Unknown error" : 'Unknown error'}`);
     }
   } else if (subcmd === 'progress') {
@@ -1085,6 +980,8 @@ bot.command('debt', async (ctx) => {
   const text = ctx.message.text.substring(5).trim(); // remove '/debt '
   const parts = text.split(' ');
   const subcmd = parts[0];
+
+  if (!subcmd || subcmd === 'list') return cards.debts(ctx);
 
   if (subcmd === 'lend') {
     // /debt lend <counterparty> <amount> [description]
@@ -1142,27 +1039,6 @@ bot.command('debt', async (ctx) => {
       console.error('Settle debt error:', error);
       ctx.reply(`❌ Error: ${error instanceof Error ? error.message : "Unknown error"}`);
     }
-  } else if (subcmd === 'list') {
-    try {
-      const debts = await debtService.listDebts(ctx.session.user.id);
-      if (debts.length === 0) {
-        return ctx.reply('📭 No debts recorded yet.');
-      }
-      let msg = '💰 Your debts:\n';
-      for (const d of debts) {
-        const status = d.settled ? '✅ Settled' : '⏳ Pending';
-        const lentOrBorrowed = d.type === 'lend' ? 'lent' : 'borrowed';
-        msg += `• ${status} ${lentOrBorrowed} ₹${d.amount.toFixed(2)} to/from ${d.counterparty}`;
-        if (d.description) {
-          msg += ` (${d.description})`;
-        }
-        msg += ` | ID: ${d.id}\n`;
-      }
-      ctx.reply(msg);
-    } catch (error: unknown) {
-      console.error('List debts error:', error);
-      ctx.reply(`❌ Error: ${error instanceof Error ? error.message : "Unknown error"}`);
-    }
   } else if (subcmd === 'delete' || subcmd === 'remove') {
     const debtId = parts[1];
     if (!debtId) {
@@ -1181,6 +1057,26 @@ bot.command('debt', async (ctx) => {
 });
 
 // Account command
+const showAccounts = async (ctx: BotContext) => {
+  try {
+    const accounts = await accountService.listAccounts(ctx.session.user!.id);
+    if (accounts.length === 0) {
+      return ctx.reply('📭 No accounts yet.', Markup.inlineKeyboard([[Markup.button.callback('➕ Add account', 'acc_add')]]));
+    }
+    const lines = accounts.map(a => `• ${a.name} (${a.type}): ₹${a.current_balance.toFixed(2)}`);
+    return ctx.reply(
+      `💳 Your accounts:\n${lines.join('\n')}`,
+      Markup.inlineKeyboard([
+        [Markup.button.callback('➕ Add account', 'acc_add')],
+        [Markup.button.callback('🔁 Transfer', 'tf_start'), Markup.button.callback('🗑️ Delete', 'acc_del')]
+      ])
+    );
+  } catch (error: unknown) {
+    console.error('Account overview error:', error);
+    return ctx.reply(`❌ Error: ${error instanceof Error ? error.message : 'Unknown error'}`);
+  }
+};
+
 bot.command('account', async (ctx) => {
   if (!ctx.session.user) {
     return ctx.reply('Please start the bot first with /start');
@@ -1189,25 +1085,7 @@ bot.command('account', async (ctx) => {
   const parts = text.split(' ');
   const subcmd = parts[0];
 
-  if (!subcmd) {
-    try {
-      const accounts = await accountService.listAccounts(ctx.session.user.id);
-      if (accounts.length === 0) {
-        return ctx.reply('📭 No accounts yet.', Markup.inlineKeyboard([[Markup.button.callback('➕ Add account', 'acc_add')]]));
-      }
-      const lines = accounts.map(a => `• ${a.name} (${a.type}): ₹${a.current_balance.toFixed(2)}`);
-      return ctx.reply(
-        `💳 Your accounts:\n${lines.join('\n')}`,
-        Markup.inlineKeyboard([
-          [Markup.button.callback('➕ Add account', 'acc_add')],
-          [Markup.button.callback('🔁 Transfer', 'tf_start'), Markup.button.callback('🗑️ Delete', 'acc_del')]
-        ])
-      );
-    } catch (error: unknown) {
-      console.error('Account overview error:', error);
-      return ctx.reply(`❌ Error: ${error instanceof Error ? error.message : 'Unknown error'}`);
-    }
-  }
+  if (!subcmd) return showAccounts(ctx);
 
   if (subcmd === 'add') {
     // /account add <name> <type> [currency] [starting_balance]
@@ -1475,6 +1353,27 @@ bot.action(/ocr_(yes|no)/, async (ctx) => {
 // with 409 until the old one stops polling. Retry instead of crashing.
 async function launchBot(attempt = 1): Promise<void> {
   try {
+    // Telegram's "/" menu, so commands autocomplete
+    await bot.telegram.setMyCommands([
+      { command: 'menu', description: 'Open the button menu' },
+      { command: 'add', description: 'Add an expense' },
+      { command: 'income', description: 'Add income' },
+      { command: 'today', description: "Today's summary" },
+      { command: 'monthly', description: 'Monthly summary' },
+      { command: 'budget', description: 'Set a monthly budget' },
+      { command: 'budgetstatus', description: 'Budget progress' },
+      { command: 'goal', description: 'Savings goals' },
+      { command: 'debt', description: 'Money lent and borrowed' },
+      { command: 'recur', description: 'Recurring entries' },
+      { command: 'reminder', description: 'Daily reminder' },
+      { command: 'account', description: 'Your accounts' },
+      { command: 'transfer', description: 'Move money between accounts' },
+      { command: 'recent', description: 'Browse and delete entries' },
+      { command: 'export', description: 'Export CSV' },
+      { command: 'dashboard', description: 'Open the web dashboard' },
+      { command: 'link', description: 'Get a dashboard link code' },
+      { command: 'help', description: 'All commands' },
+    ]).catch((e: unknown) => console.warn('setMyCommands failed:', e));
     await bot.launch(() => console.log('🤖 Expense Tracker Bot started successfully'));
   } catch (error: any) {
     if (error?.response?.error_code === 409 && attempt < 12) {

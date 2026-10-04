@@ -41,13 +41,13 @@ export default async function GuidePage() {
 
       <Card title="1. Set it up for better insights">
         <ul className="list-disc space-y-1 pl-5">
-          <li>Budgets: <Code>/budget Food 5000 10 2026</Code> (category, amount, month, year) fills the Budget widget.</li>
-          <li>Recurring bills: <Code>/recur add 1000 rent expense every 1 month</Code> fills Upcoming recurring.</li>
-          <li>Goals: <Code>/goal set Laptop 60000</Code>, then <Code>/goal progress &lt;id&gt; 5000</Code>.</li>
-          <li>Debts: <Code>/debt lend Sam 500</Code> or <Code>/debt borrow Sam 500</Code>.</li>
-          <li>Daily reminder: <Code>/reminder on 21:00</Code>.</li>
+          <li>Budgets: send <Code>/budget</Code>, pick a category and an amount. Fills the Budget widget.</li>
+          <li>Recurring bills: send <Code>/recur</Code> and tap New recurring. Fills Upcoming recurring.</li>
+          <li>Goals: send <Code>/goal</Code> to create one and add savings.</li>
+          <li>Debts: send <Code>/debt</Code> and tap I lent or I borrowed.</li>
+          <li>Daily reminder: send <Code>/reminder</Code> and tap Turn on.</li>
         </ul>
-        <p>Send <Code>/help</Code> in the bot for every command. You can also send a voice note or a photo of a receipt.</p>
+        <p>Send <Code>/menu</Code> in the bot for buttons. Typed shortcuts such as <Code>/budget Food 5000 10 2026</Code> still work, and <Code>/help</Code> lists them all. You can also send a voice note or a photo of a receipt.</p>
       </Card>
 
       <Card title="2. Reading the Overview">

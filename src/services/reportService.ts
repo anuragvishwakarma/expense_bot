@@ -1,3 +1,5 @@
+import { csvRow, CSV_BOM } from '../utils/csv';
+import { todayIST, isRealDate } from '../utils/ist';
 import { getSupabase } from '../db';
 
 interface Category {
@@ -14,7 +16,7 @@ interface TransactionWithCategory {
 }
 
 export class ReportService {
-  async getDailySummary(userId: string, date: string = new Date().toISOString().split('T')[0]) {
+  async getDailySummary(userId: string, date: string = todayIST()) {
     const supabase = getSupabase();
     
     const { data, error } = await supabase
@@ -128,8 +130,14 @@ export class ReportService {
   }
 
   async exportTransactionsCSV(userId: string, startDate: string, endDate: string) {
+    if (!isRealDate(startDate) || !isRealDate(endDate)) {
+      throw new Error('Please use real dates in YYYY-MM-DD format, like 2026-10-31.');
+    }
+    if (startDate > endDate) {
+      throw new Error('The start date is after the end date. Try swapping them.');
+    }
     const supabase = getSupabase();
-    
+
     const { data, error } = await supabase
       .from('transactions')
       .select(`
@@ -145,30 +153,19 @@ export class ReportService {
       .order('date', { ascending: true });
 
     if (error) throw error;
-    
+
     const transactions = data as unknown as TransactionWithCategory[];
 
-    // Convert to CSV format
-    const headers = ['Date', 'Type', 'Amount', 'Description', 'Category'];
-    const rows = transactions.map(t => [
+    // Amount is a plain number (not "₹500" text) so sheets can sum it. Text cells are
+    // neutralised against spreadsheet formulas by csvCell.
+    const rows = transactions.map(t => csvRow([
       t.date,
       t.type === 'income' ? 'Income' : 'Expense',
-      `₹${t.amount}`,
+      Number(t.amount).toFixed(2),
       t.description || '',
       t.category?.name || 'Uncategorized'
-    ]);
-    
-    const csvContent = [
-      headers.join(','),
-      ...rows.map(row => 
-        row.map(field => 
-          typeof field === 'string' && field.includes(',') 
-            ? `"${field.replace(/"/g, '""')}"` 
-            : field
-        ).join(',')
-      )
-    ].join('\n');
-    
-    return csvContent;
+    ]));
+
+    return CSV_BOM + [csvRow(['Date', 'Type', 'Amount (INR)', 'Description', 'Category']), ...rows].join('\n');
   }
 }

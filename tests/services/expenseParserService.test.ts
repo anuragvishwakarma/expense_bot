@@ -217,4 +217,22 @@ describe('processNlpExpenseMessage', () => {
 
     expect(reply).toContain('No account found for user');
   });
+
+  it('saves income items as income and reports spent and received separately', async () => {
+    mockedAxios.post.mockResolvedValue({
+      data: { choices: [{ message: { content: JSON.stringify({ items: [
+        { amount: 300, description: 'dinner', category: 'Food', type: 'expense' },
+        { amount: 500, description: 'refund received', category: 'Refund', type: 'income' }
+      ] }) } }] }
+    });
+    const saveExpense = jest.fn(async (amount: number, _d: string, category: string) => ({ amount, categoryName: category }));
+
+    const reply = await processNlpExpenseMessage('spent 300 on dinner, received 500 refund', ['Food'], saveExpense);
+
+    expect(saveExpense).toHaveBeenNthCalledWith(1, 300, 'dinner', 'Food', 'expense');
+    expect(saveExpense).toHaveBeenNthCalledWith(2, 500, 'refund received', 'Refund', 'income');
+    expect(reply).toContain('Saved 2 entries');
+    expect(reply).toContain('+₹500');
+    expect(reply).toContain('Spent: ₹300 · Received: ₹500');
+  });
 });

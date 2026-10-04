@@ -19,6 +19,14 @@ export function extractDate(text: string, now: Date = new Date()): { date: strin
   let m = text.match(/\b(?:the\s+)?day before yesterday\b/i);
   if (m) return { date: shift(2), text: strip(m) };
 
+  // ISO date: 2026-10-02
+  const isoM = text.match(/\b(\d{4})-(\d{2})-(\d{2})\b/);
+  if (isoM) {
+    const d = isoM[0];
+    const real = new Date(`${d}T00:00:00Z`);
+    if (!isNaN(real.getTime()) && real.toISOString().slice(0, 10) === d && d <= today) return { date: d, text: strip(isoM) };
+  }
+
   m = text.match(/\btoday\b/i);
   if (m) return { date: today, text: strip(m) };
 

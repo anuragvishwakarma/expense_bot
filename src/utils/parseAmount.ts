@@ -1,65 +1,46 @@
+const SYMBOLS: Record<string, string> = { '$': 'USD', '€': 'EUR', '£': 'GBP', '¥': 'JPY', '₹': 'INR' };
+// Only real currency codes count, so "lunch at KFC" or "ATM" stay in the description.
+const CODES = new Set(['INR', 'USD', 'EUR', 'GBP', 'JPY', 'AUD', 'CAD', 'SGD', 'AED', 'CHF', 'CNY', 'HKD', 'NZD', 'SAR', 'ZAR', 'THB', 'MYR', 'KRW']);
+const MULTIPLIER: Record<string, number> = { k: 1e3, cr: 1e7, crore: 1e7, lakh: 1e5, lac: 1e5 };
+
+// "500 lunch", "₹1,500 rent", "2k rent", "1.5 lakh bonus", "50 USD lunch", "$10 coffee"
 export function parseAmount(input: string): { amount: number; currency: string; remainder: string } | null {
-  const cleaned = input.trim();
-  
-  // Try patterns in order:
-  // 1. Currency symbol before amount: $50 lunch, ₹500 dinner
-  // 2. Amount then currency code: 50 USD lunch, 500 INR dinner
-  // 3. Amount then symbol: 50$ lunch (less common)
-  // 4. Just amount and description: 50 lunch
-  
-  const patterns = [
-    // Symbol before amount: $50 lunch
-    /^([$€£¥₹])\s*([\d,\.]+)\s*(.*)$/,
-    // Amount then 3-letter code: 50 USD lunch
-    /^([\d,\.]+)\s*([A-Z]{3})\s*(.*)$/,
-    // Amount then symbol: 50$ lunch
-    /^([\d,\.]+)\s*([$€£¥₹])\s*(.*)$/,
-    // Just amount and description: 50 lunch
-    /^([\d,\.]+)\s*(.*)$/
-  ];
-  
-  for (const pattern of patterns) {
-    const match = cleaned.match(pattern);
-    if (match) {
-      let currency = '';
-      let amountStr = '';
-      let description = '';
-      
-      if (match[1] && match[1].match(/[$€£¥₹]/)) {
-        // Symbol before amount (pattern 1)
-        currency = match[1];
-        amountStr = match[2].replace(/,/g, '');
-        description = (match[3] || '').trim();
-      } else if (match[2] && match[2].match(/[A-Z]{3}/)) {
-        // Amount then 3-letter code (pattern 2)
-        amountStr = match[1].replace(/,/g, '');
-        currency = match[2];
-        description = (match[3] || '').trim();
-      } else if (match[2] && match[2].match(/[$€£¥₹]/)) {
-        // Amount then symbol (pattern 3)
-        amountStr = match[1].replace(/,/g, '');
-        currency = match[2];
-        description = (match[3] || '').trim();
-      } else {
-        // Just amount and description (pattern 4)
-        amountStr = match[1].replace(/,/g, '');
-        currency = '';
-        description = (match[2] || '').trim();
-      }
-      
-      // Default currency
-      if (!currency) {
-        currency = 'INR';
-      } else if (currency.length === 1 && ['$','€','£','¥','₹'].includes(currency)) {
-        const symbolMap: { [key: string]: string } = { '$': 'USD', '€': 'EUR', '£': 'GBP', '¥': 'JPY', '₹': 'INR' };
-        currency = symbolMap[currency];
-      }
-      
-      const amount = parseFloat(amountStr);
-      if (isNaN(amount)) return null;
-      return { amount, currency, remainder: description };
+  let s = input.trim();
+  let currency = '';
+
+  const lead = s.match(/^([$€£¥₹])\s*/);
+  if (lead) {
+    currency = SYMBOLS[lead[1]];
+    s = s.slice(lead[0].length);
+  }
+
+  // Plain digits, or comma groups of 3 (1,500) or Indian 2-digit groups (1,00,000)
+  const num = s.match(/^(?:\d{1,3}(?:,\d{2,3})+|\d+)(?:\.\d+)?/);
+  if (!num) return null;
+  let rest = s.slice(num[0].length);
+  if (/^[.,\d]/.test(rest)) return null; // "1..5" and similar typos
+
+  let amount = parseFloat(num[0].replace(/,/g, ''));
+  // 2k / 5cr attach to the number; "lakh"/"crore" may follow a space. A bare "L" is not
+  // treated as lakh because "5L" is as likely to mean litres.
+  const suffix = rest.match(/^(?:(k|cr)(?![a-z])|\s*(lakh|lac|crore)(?![a-z]))/i);
+  if (suffix) {
+    amount *= MULTIPLIER[(suffix[1] ?? suffix[2]).toLowerCase()];
+    rest = rest.slice(suffix[0].length);
+  }
+
+  if (!currency) {
+    const sym = rest.match(/^\s*([$€£¥₹])/);
+    const code = rest.match(/^\s*([A-Za-z]{3})(?![A-Za-z])/);
+    if (sym) {
+      currency = SYMBOLS[sym[1]];
+      rest = rest.slice(sym[0].length);
+    } else if (code && CODES.has(code[1].toUpperCase())) {
+      currency = code[1].toUpperCase();
+      rest = rest.slice(code[0].length);
     }
   }
-  
-  return null;
+
+  if (isNaN(amount)) return null;
+  return { amount: Math.round(amount * 100) / 100, currency: currency || 'INR', remainder: rest.trim() };
 }

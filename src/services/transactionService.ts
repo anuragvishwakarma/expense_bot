@@ -1,3 +1,7 @@
+import { MAX_AMOUNT } from '../utils/limits';
+import { todayIST } from '../utils/ist';
+import { guessCategory } from '../utils/categorize';
+import { matchCategory } from '../utils/parseBudget';
 import { getSupabase } from '../db';
 import { parseAmount } from '../utils/parseAmount';
 import { extractDate } from '../utils/parseDate';
@@ -19,6 +23,9 @@ interface TransactionRow {
   created_at: string;
 }
 
+// numeric(10,2) holds up to 99,999,999.99; the description is capped so replies fit Telegram's message limit
+const MAX_DESCRIPTION = 200;
+
 export class TransactionService {
   private currencyService = new CurrencyService();
   private accountService = new AccountService();
@@ -33,8 +40,11 @@ export class TransactionService {
     }
     
     const { amount, currency, remainder } = parsed;
+    if (amount <= 0) throw new Error('The amount must be more than 0.');
+    if (amount > MAX_AMOUNT) throw new Error('That amount is too large. The maximum is ₹9,99,99,999.');
     // Backdating: "2 days ago" / "30 oct" in the text sets the date, phrase is dropped from description
-    const { date, text: description } = extractDate(remainder);
+    const { date, text: fullDescription } = extractDate(remainder);
+    const description = fullDescription.slice(0, MAX_DESCRIPTION);
     
     // Convert amount to base currency (INR) for storage and reporting
     const amountBase = await this.currencyService.convert(amount, currency, 'INR');
@@ -60,6 +70,13 @@ export class TransactionService {
     // category, so every transaction still needs a real category row).
     let categoryId: string | null = null;
     let resolvedCategoryName: string | null = null;
+
+    // No category given (typed /add, +income, recurring, voice): infer one from the description
+    // using the user's own categories, so budgets and reports see the spending.
+    if (!categoryName && description) {
+      const { data: names } = await supabase.from('categories').select('name').eq('user_id', userId).eq('type', type);
+      categoryName = guessCategory(description, (names ?? []).map((c: { name: string }) => c.name)) ?? undefined;
+    }
 
     if (categoryName) {
       const { data: matched, error: matchError } = await supabase
@@ -113,7 +130,7 @@ export class TransactionService {
         currency_code: currency,
         amount_base: amountBase, // converted to base currency (INR)
         description: description || null,
-        ...(date && { date }),
+        date: date ?? todayIST(), // explicit IST date; the DB default current_date is UTC
         type
       })
       .select()
@@ -175,6 +192,36 @@ export class TransactionService {
     // Separate lookup: prod has no FK between transactions and accounts, so PostgREST can't embed it
     const account = data.account_id ? await this.accountService.getAccount(data.account_id, userId) : null;
     return { ...data, account: account ? { name: account.name } : null };
+  }
+
+  // Re-file an existing entry under one of the user's own categories of the same type.
+  async setCategory(userId: string, transactionId: string, input: string): Promise<string> {
+    const supabase = getSupabase();
+    const { data: tx, error } = await supabase
+      .from('transactions')
+      .select('id, type')
+      .eq('id', transactionId)
+      .eq('user_id', userId)
+      .single();
+    if (error || !tx) throw new Error('Entry not found (already deleted?)');
+
+    const { data: cats, error: catError } = await supabase
+      .from('categories')
+      .select('id, name')
+      .eq('user_id', userId)
+      .eq('type', tx.type);
+    if (catError) throw catError;
+
+    const name = matchCategory((cats ?? []).map((c: { name: string }) => c.name), input);
+    if (!name) throw new Error(`No ${tx.type} category named "${input}". Pick one of the buttons.`);
+
+    const { error: updateError } = await supabase
+      .from('transactions')
+      .update({ category_id: (cats ?? []).find((c: { name: string }) => c.name === name)!.id })
+      .eq('id', transactionId)
+      .eq('user_id', userId);
+    if (updateError) throw updateError;
+    return name;
   }
 
   // Deletes an entry and reverses its effect on the account balance.

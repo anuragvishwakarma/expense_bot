@@ -1,3 +1,4 @@
+import { checkAmount, checkName } from '../utils/limits';
 import { getSupabase } from '../db';
 import { matchCategory } from '../utils/parseBudget';
 
@@ -18,6 +19,7 @@ interface TransactionWithCategory {
 
 export class BudgetService {
   async setBudget(userId: string, categoryName: string, amount: number, month: number, year: number) {
+    checkAmount(amount, 'budget');
     const supabase = getSupabase();
     
     // Reuse an existing category ("food" -> "Food & Dining"); create one only if nothing matches.
@@ -30,10 +32,11 @@ export class BudgetService {
 
     const matched = matchCategory((cats ?? []).map(c => c.name), categoryName);
     let categoryId: string;
-    const resolvedName = matched ?? categoryName;
+    const resolvedName = matched ?? categoryName.trim();
     if (matched) {
       categoryId = cats!.find(c => c.name === matched)!.id;
     } else {
+      categoryName = checkName(categoryName, 'category'); // a brand-new category name is capped
       const { data: newCat, error: createError } = await supabase
         .from('categories')
         .insert({ user_id: userId, name: categoryName, type: 'expense', icon: '💰' })

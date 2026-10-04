@@ -7,9 +7,29 @@ export class VoiceService {
   private speechClient: SpeechClient;
   private transactionService: TransactionService;
 
+  private configured = false;
+
   constructor() {
-    this.speechClient = new SpeechClient();
+    // Credentials come from GOOGLE_CREDENTIALS_JSON (the whole service-account JSON, handy on
+    // Railway) or GOOGLE_APPLICATION_CREDENTIALS (a key file path). Without either, voice is off.
+    let options: ConstructorParameters<typeof SpeechClient>[0];
+    const json = process.env.GOOGLE_CREDENTIALS_JSON;
+    if (json) {
+      try {
+        options = { credentials: JSON.parse(json) };
+        this.configured = true;
+      } catch {
+        console.error('GOOGLE_CREDENTIALS_JSON is not valid JSON; voice notes stay disabled');
+      }
+    } else if (process.env.GOOGLE_APPLICATION_CREDENTIALS) {
+      this.configured = true;
+    }
+    this.speechClient = new SpeechClient(options);
     this.transactionService = new TransactionService();
+  }
+
+  isConfigured(): boolean {
+    return this.configured;
   }
 
   async transcribeVoice(audio: Buffer): Promise<string> {

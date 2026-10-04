@@ -1,5 +1,7 @@
 import { getSupabase } from '../db';
 
+const CONVERSION_UNAVAILABLE = 'Currency conversion is unavailable right now. Please enter the amount in ₹.';
+
 export class CurrencyService {
   private apiKey: string | null;
   private baseCurrency: string = 'INR';
@@ -23,9 +25,8 @@ export class CurrencyService {
       if (from.toUpperCase() === to.toUpperCase()) {
         return amount;
       }
-      // Without API key, we cannot convert. We'll just return the amount and log a warning.
-      console.warn('No API key for currency conversion; returning original amount.');
-      return amount;
+      // Never record foreign money as if it were rupees.
+      throw new Error(CONVERSION_UNAVAILABLE);
     }
 
     const fromUpper = from.toUpperCase();
@@ -63,8 +64,7 @@ export class CurrencyService {
       return amount * rate;
     } catch (error) {
       console.error('Currency conversion error:', error);
-      // Fallback: return original amount (assuming same currency) to avoid breaking the flow
-      return amount;
+      throw new Error(CONVERSION_UNAVAILABLE);
     }
   }
 }

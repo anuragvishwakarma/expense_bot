@@ -91,30 +91,32 @@ export interface ExpenseSaveResult {
 
 export const PARSE_FAILURE_MESSAGE = "Couldn't parse that as an expense. Try /add <amount> <description>.";
 
+export type SaveItem = (amount: number, description: string, categoryName: string, type: 'expense' | 'income') => Promise<ExpenseSaveResult>;
+
 export async function processNlpExpenseMessage(
   text: string,
   candidateCategories: string[],
-  saveExpense: (amount: number, description: string, categoryName: string) => Promise<ExpenseSaveResult>
+  saveExpense: SaveItem
 ): Promise<string> {
   const items = await parseExpenseText(text, candidateCategories);
   if (!items) return PARSE_FAILURE_MESSAGE;
   return saveParsedItems(items, saveExpense);
 }
 
-export async function saveParsedItems(
-  items: ParsedExpenseItem[],
-  saveExpense: (amount: number, description: string, categoryName: string) => Promise<ExpenseSaveResult>
-): Promise<string> {
-  let total = 0;
+export async function saveParsedItems(items: ParsedExpenseItem[], saveItem: SaveItem): Promise<string> {
+  let spent = 0;
+  let received = 0;
   const savedLines: string[] = [];
   const failedDescriptions: string[] = [];
   let lastError: string | null = null;
 
   for (const item of items) {
+    const type = item.type ?? 'expense';
     try {
-      const saved = await saveExpense(item.amount, item.description, item.category);
-      total += saved.amount;
-      savedLines.push(`• ${item.description} — ₹${saved.amount} (${saved.categoryName || 'Uncategorized'})`);
+      const saved = await saveItem(item.amount, item.description, item.category, type);
+      if (type === 'income') received += saved.amount;
+      else spent += saved.amount;
+      savedLines.push(`• ${item.description} — ${type === 'income' ? '+' : ''}₹${saved.amount} (${saved.categoryName || 'Uncategorized'})${type === 'income' ? ' income' : ''}`);
     } catch (error: unknown) {
       lastError = error instanceof Error ? error.message : 'Unknown error';
       failedDescriptions.push(item.description);
@@ -125,7 +127,10 @@ export async function saveParsedItems(
     return lastError ? `❌ ${lastError}` : PARSE_FAILURE_MESSAGE;
   }
 
-  let reply = `✅ Saved ${savedLines.length} expense${savedLines.length > 1 ? 's' : ''}:\n${savedLines.join('\n')}\nTotal: ₹${total}`;
+  const n = savedLines.length;
+  let reply = received > 0
+    ? `✅ Saved ${n} ${n > 1 ? 'entries' : 'entry'}:\n${savedLines.join('\n')}\nSpent: ₹${spent} · Received: ₹${received}`
+    : `✅ Saved ${n} expense${n > 1 ? 's' : ''}:\n${savedLines.join('\n')}\nTotal: ₹${spent}`;
   if (failedDescriptions.length > 0) {
     reply += `\n⚠️ Not saved: ${failedDescriptions.join(', ')} — try /add`;
   }

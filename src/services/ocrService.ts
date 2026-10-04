@@ -1,3 +1,4 @@
+import { todayIST } from '../utils/ist';
 import axios from 'axios';
 import FormData from 'form-data';
 import { getSupabase } from '../db';
@@ -79,7 +80,7 @@ export class OCRService {
         break;
       }
     }
-    if (!dateStr) dateStr = new Date().toISOString().split('T')[0]; // fallback to today
+    if (!dateStr) dateStr = todayIST(); // fallback to today (IST)
 
     // Description: take first line that is not amount or date, or combine first two lines
     let description = 'Receipt';

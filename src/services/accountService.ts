@@ -1,3 +1,4 @@
+import { checkAmount, checkName } from '../utils/limits';
 import { getSupabase } from '../db';
 
 export interface Account {
@@ -14,6 +15,13 @@ export interface Account {
 
 export class AccountService {
   async createAccount(userId: string, name: string, type: string, currencyCode: string = 'INR', startingBalance: number = 0): Promise<Account> {
+    name = checkName(name, 'account');
+    checkAmount(startingBalance, 'starting balance', { allowZero: true });
+    // Two accounts with the same name make the transfer and entry buttons ambiguous
+    const existing = await this.listAccounts(userId);
+    if (existing.some(a => a.name.trim().toLowerCase() === name.toLowerCase())) {
+      throw new Error(`You already have an account called "${name}". Pick a different name.`);
+    }
     const supabase = getSupabase();
     const { data, error } = await supabase
       .from('accounts')

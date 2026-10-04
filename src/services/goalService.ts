@@ -1,3 +1,4 @@
+import { checkAmount, checkName } from '../utils/limits';
 import { getSupabase } from '../db';
 
 export interface Goal {
@@ -12,6 +13,8 @@ export interface Goal {
 
 export class GoalService {
   async createGoal(userId: string, name: string, targetAmount: number): Promise<Goal> {
+    name = checkName(name, 'goal');
+    checkAmount(targetAmount, 'target');
     const supabase = getSupabase();
     const { data, error } = await supabase
       .from('goals')
@@ -41,6 +44,7 @@ export class GoalService {
   }
 
   async updateProgress(goalId: string, userId: string, amountToAdd: number): Promise<Goal> {
+    checkAmount(amountToAdd, 'amount');
     const supabase = getSupabase();
     // First, get the current goal to ensure it belongs to the user and calculate new saved amount
     const { data: goal, error: fetchError } = await supabase

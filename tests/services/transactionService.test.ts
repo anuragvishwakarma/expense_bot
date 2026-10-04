@@ -11,6 +11,8 @@ function buildCategoriesQuery() {
   // `.limit()` is the terminal call for lookups; it filters by whatever name
   // `.ilike()` was last called with on this same builder instance.
   const builder: any = {
+    // `await supabase.from('categories').select('name').eq().eq()` (the category-guess lookup)
+    then: (resolve: (v: any) => void) => resolve({ data: mockCategories, error: null }),
     select: jest.fn().mockReturnThis(),
     eq: jest.fn().mockReturnThis(),
     ilike: jest.fn(function (this: any, _col: string, value: string) {
@@ -62,6 +64,7 @@ function buildTransactionsQuery(categoryIdSeen: { value: string | null }) {
   const builder: any = {
     insert: jest.fn(function (this: any, row: any) {
       categoryIdSeen.value = row.category_id;
+      (globalThis as any).__lastTxnRow = row;
       return this;
     }),
     select: jest.fn(function (this: any) {
@@ -140,5 +143,53 @@ describe('TransactionService', () => {
   it('returns the fallback category name when categoryName matches nothing', async () => {
     const transaction = await transactionService.addTransaction('user-1', '500 lunch', 'expense', undefined, 'Nonexistent');
     expect(transaction.category_name).toBe('Uncategorized');
+  });
+
+  it('refuses a zero amount', async () => {
+    await expect(transactionService.addTransaction('user-1', '0 nothing', 'expense')).rejects.toThrow('more than 0');
+  });
+
+  it('refuses an amount the database cannot hold, with a readable message', async () => {
+    await expect(transactionService.addTransaction('user-1', '99999999999 big', 'expense')).rejects.toThrow('too large');
+  });
+
+  it('caps very long descriptions at 200 characters before saving', async () => {
+    await transactionService.addTransaction('user-1', `500 ${'x'.repeat(5000)}`, 'expense');
+    expect((globalThis as any).__lastTxnRow.description).toHaveLength(200);
+  });
+
+  it('saves "lunch at KFC" with amount 50 and the full description (KFC is not a currency)', async () => {
+    await transactionService.addTransaction('user-1', '50 lunch at KFC', 'expense');
+    const row = (globalThis as any).__lastTxnRow;
+    expect(row.amount).toBe(50);
+    expect(row.description).toBe('lunch at KFC');
+    expect(row.currency_code).toBe('INR');
+  });
+
+  it('saves "2k rent" as 2000', async () => {
+    await transactionService.addTransaction('user-1', '2k rent', 'expense');
+    expect((globalThis as any).__lastTxnRow.amount).toBe(2000);
+  });
+
+  it('infers a category from the description when none is given (typed /add)', async () => {
+    await transactionService.addTransaction('user-1', '600 food party', 'expense');
+    expect(categoryIdSeen.value).toBe('cat-food');
+  });
+
+  it('does not override a category the caller chose', async () => {
+    await transactionService.addTransaction('user-1', '600 food party', 'expense', undefined, 'Transport');
+    expect(categoryIdSeen.value).toBe('cat-transport');
+  });
+
+  it('saves an explicit IST date, never relying on the UTC database default', async () => {
+    jest.useFakeTimers({ now: new Date('2026-10-04T20:00:00Z'), doNotFake: ['nextTick', 'setImmediate', 'setTimeout'] });
+    try {
+      await transactionService.addTransaction('user-1', '500 lunch', 'expense');
+      expect((globalThis as any).__lastTxnRow.date).toBe('2026-10-05'); // 01:30 IST on the 5th
+      await transactionService.addTransaction('user-1', '500 lunch yesterday', 'expense');
+      expect((globalThis as any).__lastTxnRow.date).toBe('2026-10-04');
+    } finally {
+      jest.useRealTimers();
+    }
   });
 });

@@ -21,10 +21,9 @@ describe('CurrencyService', () => {
     expect(result).toBe(1000);
   });
 
-  it('should return amount if no API key and different currency', async () => {
+  it('refuses to convert without an API key instead of silently treating foreign money as INR', async () => {
     currencyService = new CurrencyService();
-    const result = await currencyService.convert(1000, 'INR', 'USD');
-    expect(result).toBe(1000);
+    await expect(currencyService.convert(1000, 'USD', 'INR')).rejects.toThrow('Currency conversion is unavailable');
   });
 
   it('should convert currency with API key', async () => {
@@ -75,10 +74,8 @@ describe('CurrencyService', () => {
     });
 
     currencyService = new CurrencyService('test-key');
-    const result = await currencyService.convert(1000, 'INR', 'USD');
-
-    // Should return original amount on error
-    expect(result).toBe(1000);
+    // A failed lookup must not fall back to treating the amount as the target currency
+    await expect(currencyService.convert(1000, 'INR', 'USD')).rejects.toThrow('Currency conversion is unavailable');
   });
 
   it('should handle API response errors', async () => {
@@ -91,8 +88,6 @@ describe('CurrencyService', () => {
     });
 
     currencyService = new CurrencyService('test-key');
-    const result = await currencyService.convert(1000, 'INVALID', 'USD');
-
-    expect(result).toBe(1000);
+    await expect(currencyService.convert(1000, 'INVALID', 'USD')).rejects.toThrow('Currency conversion is unavailable');
   });
 });

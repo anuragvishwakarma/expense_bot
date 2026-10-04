@@ -67,4 +67,25 @@ describe('isDue', () => {
     expect(isDue({ ...r, last_run_at: '2026-09-02T09:00:30Z' }, t('2026-09-02T09:01:30Z'))).toBe(false);
     expect(isDue(r, t('2026-09-02T08:00:00Z'))).toBe(true); // 09-01 09:00 occurrence still after created_at
   });
+
+  it('starts and ends on IST calendar days, not UTC days', () => {
+    const r = { ...base, start_date: '2026-10-10', end_date: '2026-10-10' };
+    expect(isDue(r, t('2026-10-09T18:29:00Z'))).toBe(false); // 23:59 IST on the 9th
+    expect(isDue(r, t('2026-10-09T18:31:00Z'))).toBe(true); // 00:01 IST on the 10th
+    expect(isDue(r, t('2026-10-10T18:29:00Z'))).toBe(true); // 23:59 IST on the 10th, last moment
+    expect(isDue(r, t('2026-10-10T18:31:00Z'))).toBe(false); // 00:01 IST on the 11th
+  });
+  it('cron times are IST', () => {
+    const r = { ...base, interval_value: null, interval_unit: null, cron_expression: '0 9 * * *', created_at: '2026-10-01T00:00:00Z' };
+    // 09:00 IST = 03:30 UTC; just before it nothing new is due, just after it is
+    expect(isDue({ ...r, last_run_at: '2026-10-02T03:30:30Z' }, t('2026-10-03T03:29:00Z'))).toBe(false);
+    expect(isDue({ ...r, last_run_at: '2026-10-02T03:30:30Z' }, t('2026-10-03T03:30:30Z'))).toBe(true);
+  });
+
+  it('a cron row ignores its placeholder interval (the table requires one on every row)', () => {
+    const r = { ...base, interval_value: 1, interval_unit: 'day', cron_expression: '0 9 1 * *', created_at: '2026-10-01T00:00:00Z', last_run_at: '2026-10-01T03:30:30Z' };
+    // a daily interval would fire on the 2nd; the monthly cron must not fire until the next 1st
+    expect(isDue(r, t('2026-10-02T10:00:00Z'))).toBe(false);
+    expect(isDue(r, t('2026-11-01T03:31:00Z'))).toBe(true);
+  });
 });

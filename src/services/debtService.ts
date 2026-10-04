@@ -1,3 +1,4 @@
+import { checkAmount, checkName, MAX_NOTE } from '../utils/limits';
 import { getSupabase } from '../db';
 
 export interface Debt {
@@ -15,6 +16,9 @@ export interface Debt {
 
 export class DebtService {
   async createDebt(userId: string, counterparty: string, amount: number, type: 'lend' | 'borrow', description: string | null = null): Promise<Debt> {
+    counterparty = checkName(counterparty, 'name');
+    checkAmount(amount);
+    if (description) description = checkName(description, 'note', MAX_NOTE);
     const supabase = getSupabase();
     const { data, error } = await supabase
       .from('debts')
@@ -47,6 +51,7 @@ export class DebtService {
   }
 
   async settleDebt(debtId: string, userId: string, amount: number): Promise<Debt> {
+    checkAmount(amount, 'settlement');
     const supabase = getSupabase();
     // First, get the current debt to ensure it belongs to the user and calculate new settled amount
     const { data: debt, error: fetchError } = await supabase

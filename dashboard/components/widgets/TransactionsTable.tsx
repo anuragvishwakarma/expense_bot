@@ -13,25 +13,25 @@ interface Transaction {
 
 export default function TransactionsTable({ transactions }: { transactions: Transaction[] }): React.ReactElement {
   return (
-    <div className="rounded-lg border border-border bg-card overflow-hidden">
-      <table className="w-full text-sm">
+    <div className="rounded-lg border border-border bg-card overflow-x-auto">
+      <table className="w-full min-w-[32rem] text-sm">
         <thead>
           <tr className="border-b border-border">
-            <th className="py-3 px-6 text-left font-medium text-muted-foreground">Date</th>
-            <th className="py-3 px-6 text-left font-medium text-muted-foreground">Description</th>
-            <th className="py-3 px-6 text-left font-medium text-muted-foreground">Category</th>
-            <th className="py-3 px-6 text-right font-medium text-muted-foreground">Amount</th>
-            <th className="py-3 px-6 text-right font-medium text-muted-foreground">Actions</th>
+            <th className="py-3 px-3 md:px-6 text-left font-medium text-muted-foreground">Date</th>
+            <th className="py-3 px-3 md:px-6 text-left font-medium text-muted-foreground">Description</th>
+            <th className="py-3 px-3 md:px-6 text-left font-medium text-muted-foreground">Category</th>
+            <th className="py-3 px-3 md:px-6 text-right font-medium text-muted-foreground">Amount</th>
+            <th className="py-3 px-3 md:px-6 text-right font-medium text-muted-foreground">Actions</th>
           </tr>
         </thead>
         <tbody className="divide-y divide-border">
           {transactions.map((t) => (
             <tr key={t.id} className="hover:bg-accent/40 transition-colors">
-              <td className="py-3 px-6 text-foreground/80">
+              <td className="py-3 px-3 md:px-6 text-foreground/80">
                 {new Date(t.date).toLocaleDateString()}
               </td>
-              <td className="py-3 px-6 text-foreground">{t.description}</td>
-              <td className="py-3 px-6 text-foreground/80">
+              <td className="py-3 px-3 md:px-6 text-foreground">{t.description}</td>
+              <td className="py-3 px-3 md:px-6 text-foreground/80">
                 {t.category ? (
                   <span className="inline-flex items-center gap-2">
                     <span
@@ -46,13 +46,13 @@ export default function TransactionsTable({ transactions }: { transactions: Tran
               </td>
               <td
                 className={cn(
-                  'py-3 px-6 text-right font-medium tabular-nums',
+                  'py-3 px-3 md:px-6 text-right font-medium tabular-nums',
                   t.type === 'income' ? 'text-foreground' : 'text-destructive'
                 )}
               >
                 ₹{t.amount.toFixed(2)}
               </td>
-              <td className="py-3 px-6 text-right text-xs text-muted-foreground">Manage</td>
+              <td className="py-3 px-3 md:px-6 text-right text-xs text-muted-foreground">Manage</td>
             </tr>
           ))}
           {transactions.length === 0 && (

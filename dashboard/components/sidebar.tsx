@@ -1,9 +1,10 @@
 'use client'
 
+import { useEffect, useState } from 'react'
 import Link from 'next/link'
 import { usePathname } from 'next/navigation'
 import { cn } from 'cn'
-import { LayoutDashboard, ClipboardList, TrendingUp, HandCoins, Settings, LogOut } from 'lucide-react'
+import { LayoutDashboard, ClipboardList, TrendingUp, HandCoins, Settings, LogOut, Menu } from 'lucide-react'
 
 const links = [
   { href: '/', label: 'Overview', icon: LayoutDashboard },
@@ -15,9 +16,28 @@ const links = [
 
 export default function Sidebar() {
   const pathname = usePathname()
+  const [open, setOpen] = useState(false)
+  useEffect(() => setOpen(false), [pathname])
 
   return (
-    <aside className="fixed top-0 left-0 h-screen w-64 bg-sidebar text-sidebar-foreground flex flex-col">
+    <>
+    <button
+      type="button"
+      aria-label="Open menu"
+      onClick={() => setOpen(true)}
+      className="md:hidden fixed top-0 left-0 z-20 flex h-16 w-14 items-center justify-center text-foreground"
+    >
+      <Menu className="h-5 w-5" strokeWidth={2} />
+    </button>
+    {open && (
+      <div className="md:hidden fixed inset-0 z-30 bg-black/50" onClick={() => setOpen(false)} />
+    )}
+    <aside
+      className={cn(
+        'fixed top-0 left-0 z-40 h-screen w-64 bg-sidebar text-sidebar-foreground flex flex-col transition-transform md:translate-x-0',
+        open ? 'translate-x-0' : '-translate-x-full'
+      )}
+    >
       <div className="flex h-16 items-center px-6 border-b border-sidebar-border">
         <h2 className="font-heading text-lg font-semibold tracking-tight">
           Expense Tracker
@@ -54,5 +74,6 @@ export default function Sidebar() {
         </a>
       </nav>
     </aside>
+    </>
   )
 }

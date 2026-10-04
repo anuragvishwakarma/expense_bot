@@ -18,7 +18,7 @@ export default function TransactionFilters(): React.ReactElement {
   }
 
   return (
-    <form onSubmit={handleSubmit} className="flex items-end gap-4 mb-6">
+    <form onSubmit={handleSubmit} className="flex flex-wrap items-end gap-4 mb-6">
       <div>
         <label className="block text-sm font-medium text-muted-foreground mb-1.5">Start date</label>
         <input

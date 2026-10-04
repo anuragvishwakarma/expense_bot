@@ -14,7 +14,7 @@ import { DebtService } from './services/debtService';
 import { VoiceService } from './services/voiceService';
 import { AccountService, Account } from './services/accountService';
 import { startWorker } from './worker';
-import { HELP_MESSAGE, ERROR_MESSAGES } from './utils/helpMessages';
+import { HELP_MESSAGE, START_MESSAGE, ERROR_MESSAGES } from './utils/helpMessages';
 import axios from 'axios';
 import { parseAmount } from './utils/parseAmount';
 import { parseExpenseText, saveParsedItems, PARSE_FAILURE_MESSAGE, formatForAddTransaction } from './services/expenseParserService';
@@ -107,7 +107,7 @@ bot.use(async (ctx, next) => {
 // Start command
 bot.start((ctx) => {
   if (ctx.payload === 'link') return sendLinkCode(ctx);
-  return ctx.reply('Welcome to Expense Tracker Bot! Use /help to see available commands.');
+  return ctx.reply(START_MESSAGE);
 });
 
 // --- Button-driven account flows (no IDs or names to remember) ---

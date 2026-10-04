@@ -1,5 +1,25 @@
+export const START_MESSAGE = `👋 Welcome to Expense Tracker!
+
+Get going in 4 steps:
+
+1️⃣ Create an account (where your money lives). Tap through it with:
+/account add
+or in one line: /account add Wallet cash
+
+2️⃣ Log an expense: /add 500 lunch
+Log income: +1000 salary
+
+3️⃣ See where you stand: /today or /monthly
+
+4️⃣ Open the web dashboard for charts and trends: /dashboard
+
+Tip: you can also send a voice note or a photo of a receipt.
+All commands: /help`;
+
 export const HELP_MESSAGE = `
 🤖 *Expense Tracker Bot Help*
+
+*New here?* Create an account first with /account add, then log with /add 500 lunch. See /start for a 4-step quickstart.
 
 *Basic Commands:*
 /start - Start the bot and register your account

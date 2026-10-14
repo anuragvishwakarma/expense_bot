@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import * as crypto from 'crypto'
 import { getUserIdFromRequest } from '@/lib/auth'
+import { isCrossSite } from '@/lib/sameOrigin'
 import { getServiceSupabase } from '@/lib/supabase'
 
 const MAX_ATTEMPTS = 5
@@ -29,8 +30,7 @@ function clearAttempts(key: string) {
 
 export async function POST(request: NextRequest) {
   // A cross-site page must not be able to link this login to someone else's Telegram profile
-  const origin = request.headers.get('origin')
-  if (origin && origin !== request.nextUrl.origin) {
+  if (isCrossSite(request)) {
     return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
   }
 

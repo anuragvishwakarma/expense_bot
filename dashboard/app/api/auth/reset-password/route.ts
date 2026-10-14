@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createServerClient } from '@supabase/ssr'
 import { getUserIdFromRequest } from '@/lib/auth'
+import { isCrossSite } from '@/lib/sameOrigin'
 import { clearAccountFailures } from '@/lib/loginThrottle'
 import { RESET_COOKIE, verifyResetToken } from '@/lib/resetToken'
 
@@ -9,8 +10,7 @@ const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
 
 export async function POST(request: NextRequest) {
   // A cross-site page must not be able to change the password, even if cookies are attached
-  const origin = request.headers.get('origin')
-  if (origin && origin !== request.nextUrl.origin) {
+  if (isCrossSite(request)) {
     return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
   }
 

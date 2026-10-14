@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createClient } from '@supabase/supabase-js'
 import { getUserIdFromRequest } from '@/lib/auth'
+import { isCrossSite } from '@/lib/sameOrigin'
 import { createFailureTracker } from '@/lib/rateLimit'
 import { getServiceSupabase } from '@/lib/supabase'
 import { deleteAccount } from '@/lib/deleteAccount'
@@ -16,8 +17,7 @@ const checking = new Set<string>()
 
 export async function POST(request: NextRequest) {
   // A cross-site page must not be able to trigger this, even if the browser attaches cookies
-  const origin = request.headers.get('origin')
-  if (origin && origin !== request.nextUrl.origin) {
+  if (isCrossSite(request)) {
     return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
   }
 

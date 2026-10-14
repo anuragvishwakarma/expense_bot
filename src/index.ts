@@ -19,6 +19,7 @@ import { parseBudgetArgs } from './utils/parseBudget';
 import { BotContext, PendingEntry } from './bot/types';
 import { privateOnly } from './bot/privateOnly';
 import { userRateLimit } from './bot/rateLimit';
+import { takePaidCall, PAID_QUOTA_MESSAGE } from './bot/paidQuota';
 import { mdEscape } from './bot/ui';
 import { todayIST } from './utils/ist';
 import { alertOwner } from './utils/alert';
@@ -646,6 +647,7 @@ bot.on('text', async (ctx, next) => {
     const namesOf = (type: string) =>
       (categoryRows || []).filter((c: { type: string }) => c.type === type).map((c: { name: string }) => c.name);
 
+    if (!takePaidCall(userId)) return ctx.reply(PAID_QUOTA_MESSAGE);
     const items = await parseExpenseText(text, namesOf('expense'), namesOf('income'));
     if (!items) return ctx.reply(PARSE_FAILURE_MESSAGE);
 
@@ -1338,6 +1340,7 @@ bot.on('voice', async (ctx) => {
   if (voice.duration > MAX_VOICE_SECONDS || (voice.file_size ?? 0) > MAX_VOICE_BYTES) {
     return ctx.reply('🎙️ That voice note is too long. Keep it under a minute and try again.');
   }
+  if (!takePaidCall(ctx.session.user.id)) return ctx.reply(PAID_QUOTA_MESSAGE);
   try {
     // Get the voice file link
     const fileId = ctx.message.voice.file_id;
@@ -1472,6 +1475,7 @@ bot.on('photo', async (ctx) => {
   // Get the largest photo
   const photo = ctx.message.photo[ctx.message.photo.length - 1];
   const file_id = photo.file_id;
+  if (!takePaidCall(ctx.session.user.id)) return ctx.reply(PAID_QUOTA_MESSAGE);
   try {
     const fileLink = await ctx.telegram.getFileLink(file_id);
     // Download here so the token-bearing file URL never leaves the bot

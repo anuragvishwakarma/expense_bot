@@ -1,6 +1,7 @@
 import { cookies } from 'next/headers'
 import { createClient } from '@supabase/supabase-js'
 import { createServerClient } from '@supabase/ssr'
+import { AUTH_COOKIE_OPTIONS } from './authCookies'
 
 const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL!
 const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
@@ -11,6 +12,7 @@ const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
 export async function getServerSupabase() {
   const cookieStore = await cookies()
   return createServerClient(supabaseUrl, supabaseAnonKey, {
+    cookieOptions: AUTH_COOKIE_OPTIONS,
     cookies: {
       getAll() {
         return cookieStore.getAll().map(cookie => ({ name: cookie.name, value: cookie.value }))

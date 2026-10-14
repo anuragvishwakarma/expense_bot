@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createServerClient } from '@supabase/ssr'
+import { AUTH_COOKIE_OPTIONS } from '@/lib/authCookies'
 
 const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL!
 const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
@@ -22,6 +23,7 @@ export async function middleware(request: NextRequest) {
     let response = NextResponse.next({ request })
 
     const supabase = createServerClient(supabaseUrl, supabaseAnonKey, {
+      cookieOptions: AUTH_COOKIE_OPTIONS,
       cookies: {
         getAll: () => request.cookies.getAll(),
         setAll: (cookiesToSet) => {

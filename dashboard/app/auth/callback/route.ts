@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { createServerClient } from '@supabase/ssr'
 import { safeNext } from '@/lib/authRedirect'
 import { RESET_COOKIE, RESET_MAX_AGE_S, signResetToken } from '@/lib/resetToken'
+import { AUTH_COOKIE_OPTIONS } from '@/lib/authCookies'
 
 const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL!
 const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
@@ -17,6 +18,7 @@ export async function GET(request: NextRequest) {
   const success = NextResponse.redirect(new URL(safeNext(searchParams.get('next')), request.url))
 
   const supabase = createServerClient(supabaseUrl, supabaseAnonKey, {
+    cookieOptions: AUTH_COOKIE_OPTIONS,
     cookies: {
       getAll: () => request.cookies.getAll(),
       setAll: (cookiesToSet) => {

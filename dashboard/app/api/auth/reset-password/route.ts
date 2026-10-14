@@ -4,6 +4,7 @@ import { getUserIdFromRequest } from '@/lib/auth'
 import { isCrossSite } from '@/lib/sameOrigin'
 import { clearAccountFailures } from '@/lib/loginThrottle'
 import { RESET_COOKIE, verifyResetToken } from '@/lib/resetToken'
+import { AUTH_COOKIE_OPTIONS } from '@/lib/authCookies'
 
 const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL!
 const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
@@ -32,6 +33,7 @@ export async function POST(request: NextRequest) {
 
   const cookieCarrier = new NextResponse()
   const supabase = createServerClient(supabaseUrl, supabaseAnonKey, {
+    cookieOptions: AUTH_COOKIE_OPTIONS,
     cookies: {
       getAll: () => request.cookies.getAll(),
       setAll: (cookiesToSet) => {

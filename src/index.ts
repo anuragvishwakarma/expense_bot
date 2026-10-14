@@ -21,6 +21,7 @@ import { privateOnly } from './bot/privateOnly';
 import { userRateLimit } from './bot/rateLimit';
 import { takePaidCall, PAID_QUOTA_MESSAGE } from './bot/paidQuota';
 import { mdEscape } from './bot/ui';
+import { clearPending, liveEntry } from './bot/pending';
 import { isTransferExpired, readTransferAmount } from './bot/transfer';
 import { todayIST } from './utils/ist';
 import { alertOwner } from './utils/alert';
@@ -114,9 +115,7 @@ const startTransfer = async (ctx: BotContext) => {
   if (accounts.length < 2) {
     return ctx.reply('You need at least 2 accounts. Create one with /account add <name> <type>');
   }
-  ctx.session.wizard = undefined;
-  ctx.session.pendingTransfer = undefined;
-  ctx.session.pendingAccount = undefined;
+  clearPending(ctx.session);
   return ctx.reply('Transfer from which account?', accountButtons(accounts, 'tf_from'));
 };
 
@@ -135,6 +134,7 @@ bot.action(/^tf_from:(.+)$/, async (ctx) => {
   const accounts = await accountService.listAccounts(ctx.session.user.id);
   const from = ctx.match[1];
   if (!accounts.some(a => a.id === from)) return ctx.answerCbQuery('Account not found');
+  clearPending(ctx.session);
   ctx.session.pendingTransfer = { from, at: Date.now() };
   await ctx.answerCbQuery();
   await ctx.editMessageText('Transfer to which account?', accountButtons(accounts.filter(a => a.id !== from), 'tf_to'));
@@ -189,9 +189,7 @@ const ACCOUNT_TYPES: [string, string][] = [
 ];
 
 const startAccountWizard = async (ctx: BotContext) => {
-  ctx.session.wizard = undefined;
-  ctx.session.pendingTransfer = undefined;
-  ctx.session.pendingAccount = undefined;
+  clearPending(ctx.session);
   return ctx.reply(
     'What kind of account would you like to add?',
     Markup.inlineKeyboard(chunk(ACCOUNT_TYPES.map(([label, type]) => Markup.button.callback(label, `acc_type:${type}`)), 2))
@@ -218,6 +216,7 @@ bot.action('acc_add', async (ctx) => {
 bot.action(/^acc_type:(.+)$/, async (ctx) => {
   const type = ctx.match[1];
   if (!ctx.session.user || !ACCOUNT_TYPES.some(([, t]) => t === type)) return ctx.answerCbQuery();
+  clearPending(ctx.session);
   ctx.session.pendingAccount = { type };
   await ctx.answerCbQuery();
   await ctx.editMessageText(`What should this ${type} account be called? Send a name, e.g. HDFC (or any /command to cancel).`);
@@ -358,7 +357,7 @@ const expired = async (ctx: BotContext) => {
 };
 
 bot.action('en_save', async (ctx) => {
-  const entry = ctx.session.pendingEntry;
+  const entry = liveEntry(ctx.session);
   if (!ctx.session.user || !entry) return expired(ctx);
   ctx.session.pendingEntry = undefined;
   await ctx.answerCbQuery();
@@ -386,7 +385,7 @@ bot.action('en_cancel', async (ctx) => {
 });
 
 bot.action('en_cat', async (ctx) => {
-  const entry = ctx.session.pendingEntry;
+  const entry = liveEntry(ctx.session);
   if (!ctx.session.user || !entry) return expired(ctx);
   const { data } = await supabase
     .from('categories')
@@ -402,7 +401,7 @@ bot.action('en_cat', async (ctx) => {
 });
 
 bot.action(/^en_catset:(.+)$/, async (ctx) => {
-  const entry = ctx.session.pendingEntry;
+  const entry = liveEntry(ctx.session);
   if (!ctx.session.user || !entry) return expired(ctx);
   const { data } = await supabase
     .from('categories')
@@ -418,7 +417,7 @@ bot.action(/^en_catset:(.+)$/, async (ctx) => {
 });
 
 bot.action('en_type', async (ctx) => {
-  const entry = ctx.session.pendingEntry;
+  const entry = liveEntry(ctx.session);
   if (!ctx.session.user || !entry) return expired(ctx);
   entry.type = entry.type === 'income' ? 'expense' : 'income';
   entry.category = null; // expense and income categories are separate lists
@@ -427,14 +426,14 @@ bot.action('en_type', async (ctx) => {
 });
 
 bot.action('en_acc', async (ctx) => {
-  if (!ctx.session.user || !ctx.session.pendingEntry) return expired(ctx);
+  if (!ctx.session.user || !liveEntry(ctx.session)) return expired(ctx);
   const accounts = await accountService.listAccounts(ctx.session.user.id);
   await ctx.answerCbQuery();
   await ctx.editMessageText('Which account?', accountButtons(accounts, 'en_accset'));
 });
 
 bot.action(/^en_accset:(.+)$/, async (ctx) => {
-  const entry = ctx.session.pendingEntry;
+  const entry = liveEntry(ctx.session);
   if (!ctx.session.user || !entry) return expired(ctx);
   const acc = await accountService.getAccount(ctx.match[1], ctx.session.user.id);
   if (!acc) return ctx.answerCbQuery('Account not found');
@@ -672,7 +671,9 @@ bot.on('text', async (ctx, next) => {
       return ctx.reply('You have no account yet. Create one first with /account add <name> <type>');
     }
     const item = items[0];
+    clearPending(ctx.session);
     ctx.session.pendingEntry = {
+      at: Date.now(),
       amount: item.amount,
       description: item.description,
       type: item.type ?? 'expense',

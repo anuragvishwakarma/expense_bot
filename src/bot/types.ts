@@ -6,6 +6,7 @@ export interface PendingEntry {
   type: 'expense' | 'income';
   category: string | null;
   accountId: string;
+  at: number; // when the card was made; see liveEntry
 }
 
 // A multi-step card flow (see wizard.ts). `options` holds the values behind the

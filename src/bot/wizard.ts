@@ -1,4 +1,5 @@
 import { Markup, Telegraf } from 'telegraf';
+import { clearPending } from './pending';
 import { BotContext } from './types';
 import { chunk, cancelRow } from './ui';
 
@@ -86,9 +87,7 @@ async function advance(ctx: BotContext, edit: boolean): Promise<unknown> {
 }
 
 export async function startWizard(ctx: BotContext, id: string, data: Data = {}) {
-  ctx.session.pendingTransfer = undefined;
-  ctx.session.pendingAccount = undefined;
-  ctx.session.pendingEntry = undefined;
+  clearPending(ctx.session);
   ctx.session.wizard = { id, step: 0, data: { ...data }, options: [] };
   return advance(ctx, !!ctx.callbackQuery);
 }

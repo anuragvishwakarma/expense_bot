@@ -1,5 +1,6 @@
 import { Markup, Telegraf } from 'telegraf';
 import { clearPending } from './pending';
+import { userMessage } from '../utils/userMessage';
 import { BotContext } from './types';
 import { chunk, cancelRow } from './ui';
 
@@ -81,7 +82,7 @@ async function advance(ctx: BotContext, edit: boolean): Promise<unknown> {
     res = await def.finish(ctx, w.data);
   } catch (error: unknown) {
     console.error(`Wizard ${w.id} failed:`, error);
-    res = { text: `❌ ${error instanceof Error ? error.message : 'Unknown error'}` };
+    res = { text: `❌ ${userMessage(error)}` };
   }
   return send(ctx, res.text, res.kb, edit);
 }

@@ -1,4 +1,6 @@
 import { Markup, Telegraf } from 'telegraf';
+import { userMessage } from '../utils/userMessage';
+import { isValidYearMonth } from '../utils/limits';
 import { BotContext } from './types';
 import { Deps } from './wizards';
 import { startWizard } from './wizard';
@@ -64,7 +66,7 @@ export function registerCards(bot: Telegraf<BotContext>, deps: Deps, legacy: Leg
     } catch (error: unknown) {
       console.error('Card error:', error);
       if (ctx.callbackQuery) await ctx.answerCbQuery().catch(() => {});
-      return ctx.reply(`❌ ${error instanceof Error ? error.message : 'Something went wrong'}`);
+      return ctx.reply(`❌ ${userMessage(error)}`);
     }
   };
   const act = (pattern: RegExp | string, fn: (ctx: BotContext & { match: RegExpExecArray }) => Promise<unknown>) =>
@@ -215,8 +217,9 @@ export function registerCards(bot: Telegraf<BotContext>, deps: Deps, legacy: Leg
   };
   act(/^mn:(\w+)$/, ctx => menuActions[ctx.match[1]]?.(ctx) ?? Promise.resolve());
 
-  act(/^rp_m:(\d+):(\d+)$/, ctx => monthlyCard(ctx, Number(ctx.match[1]), Number(ctx.match[2]), true));
-  act(/^bs:(\d+):(\d+)$/, ctx => budgetStatusCard(ctx, Number(ctx.match[1]), Number(ctx.match[2]), true));
+  const badMonth = (ctx: BotContext) => ctx.reply('That month is not valid.');
+  act(/^rp_m:(\d+):(\d+)$/, ctx => isValidYearMonth(Number(ctx.match[1]), Number(ctx.match[2])) ? monthlyCard(ctx, Number(ctx.match[1]), Number(ctx.match[2]), true) : badMonth(ctx));
+  act(/^bs:(\d+):(\d+)$/, ctx => isValidYearMonth(Number(ctx.match[1]), Number(ctx.match[2])) ? budgetStatusCard(ctx, Number(ctx.match[1]), Number(ctx.match[2]), true) : badMonth(ctx));
   act('bud_new', ctx => startWizard(ctx, 'budget'));
   act('ex_custom', ctx => startWizard(ctx, 'export_range'));
   act(/^ex:(\d{4}-\d{2}-\d{2}):(\d{4}-\d{2}-\d{2})$/, async ctx => {

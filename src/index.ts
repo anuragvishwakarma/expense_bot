@@ -21,9 +21,10 @@ import { privateOnly } from './bot/privateOnly';
 import { userRateLimit } from './bot/rateLimit';
 import { takePaidCall, PAID_QUOTA_MESSAGE } from './bot/paidQuota';
 import { mdEscape } from './bot/ui';
+import { userMessage } from './utils/userMessage';
 import { clearPending, liveEntry } from './bot/pending';
 import { isTransferExpired, readTransferAmount } from './bot/transfer';
-import { todayIST } from './utils/ist';
+import { todayIST, isRealDate } from './utils/ist';
 import { alertOwner } from './utils/alert';
 import { startHealthServer } from './health';
 import { registerWizards, startWizard } from './bot/wizard';
@@ -174,7 +175,7 @@ bot.on('text', async (ctx, next) => {
     const { from, to } = await accountService.transfer(ctx.session.user.id, pending.from, pending.to, amount);
     ctx.reply(`✅ Transfer complete!\n${from.name} → ${to.name}: ₹${amount.toFixed(2)}`);
   } catch (error: unknown) {
-    ctx.reply(`❌ ${error instanceof Error ? error.message : 'Unknown error'}`);
+    ctx.reply(`❌ ${userMessage(error)}`);
   }
 });
 
@@ -204,7 +205,7 @@ const finishAccount = async (ctx: BotContext, balance: number) => {
     return ctx.reply(`✅ Account created!\n${acc.name} (${acc.type}) · ₹${acc.current_balance.toFixed(2)}`);
   } catch (error: unknown) {
     console.error('Create account error:', error);
-    return ctx.reply(`❌ ${error instanceof Error ? error.message : 'Unknown error'}`);
+    return ctx.reply(`❌ ${userMessage(error)}`);
   }
 };
 
@@ -278,7 +279,7 @@ bot.action(/^acc_delyes:(.+)$/, async (ctx) => {
     await accountService.deleteAccount(ctx.match[1], ctx.session.user.id);
     await ctx.editMessageText('🗑️ Account deleted.');
   } catch (error: unknown) {
-    await ctx.editMessageText(`❌ ${error instanceof Error ? error.message : 'Unknown error'}`);
+    await ctx.editMessageText(`❌ ${userMessage(error)}`);
   }
 });
 
@@ -374,7 +375,7 @@ bot.action('en_save', async (ctx) => {
       undoKeyboard(t.id)
     );
   } catch (error: unknown) {
-    await ctx.editMessageText(`❌ ${error instanceof Error ? error.message : 'Unknown error'}`);
+    await ctx.editMessageText(`❌ ${userMessage(error)}`);
   }
 });
 
@@ -507,8 +508,12 @@ bot.command('recent', async (ctx) => {
 
 bot.action(/^tx_list:(\d+):(.+)$/, async (ctx) => {
   if (!ctx.session.user) return ctx.answerCbQuery();
+  const page = parseInt(ctx.match[1], 10);
+  const date = ctx.match[2] === '-' ? null : ctx.match[2];
+  // callback data is client-supplied: a made-up page or date must not reach the database
+  if (!(page >= 0 && page <= 10_000) || (date !== null && !isRealDate(date))) return ctx.answerCbQuery('That page is no longer valid.');
   await ctx.answerCbQuery();
-  const { msg, kb } = await recentList(ctx.session.user.id, parseInt(ctx.match[1], 10), ctx.match[2] === '-' ? null : ctx.match[2]);
+  const { msg, kb } = await recentList(ctx.session.user.id, page, date);
   await ctx.editMessageText(msg, kb);
 });
 
@@ -545,7 +550,7 @@ bot.action(/^tx_undo:(.+)$/, async (ctx) => {
     const t = await transactionService.deleteTransaction(ctx.session.user.id, ctx.match[1]);
     await ctx.editMessageText(`↩️ Removed ₹${t.amount} ${t.description ?? ''}. Balance adjusted.`.trim());
   } catch (error: unknown) {
-    await ctx.editMessageText(`❌ ${error instanceof Error ? error.message : 'Unknown error'}`);
+    await ctx.editMessageText(`❌ ${userMessage(error)}`);
   }
 });
 
@@ -574,7 +579,7 @@ bot.command('help', showHelp);
 
 // An entry failed. Missing account is the common first-use case: say what to do and offer the button.
 const entryError = (ctx: BotContext, error: unknown) => {
-  const message = error instanceof Error ? error.message : 'Unknown error';
+  const message = userMessage(error);
   if (/No account found/.test(message)) {
     return ctx.reply(
       'You need an account first: it is where your money lives. Create one, then send your entry again.',
@@ -726,10 +731,10 @@ bot.command('monthly', async (ctx) => {
     month = parseInt(args[1]);
     year = parseInt(args[2] || year.toString());
 
-    if (isNaN(month) || month < 1 || month > 12) {
+    if (!Number.isInteger(month) || month < 1 || month > 12) {
       return ctx.reply('Please provide a valid month (1-12)');
     }
-    if (isNaN(year) || year < 2020) {
+    if (!Number.isInteger(year) || year < 2020 || year > 2100) {
       return ctx.reply('Please provide a valid year');
     }
   }
@@ -775,7 +780,7 @@ bot.command('export', async (ctx) => {
     });
   } catch (error: unknown) {
     console.error('Export error:', error);
-    ctx.reply(`❌ Error exporting data: ${error instanceof Error ? error instanceof Error ? error.message : "Unknown error" : 'Unknown error'}`);
+    ctx.reply(`❌ Error exporting data: ${userMessage(error)}`);
   }
 });
 
@@ -795,10 +800,10 @@ bot.command('budget', async (ctx) => {
   if (isNaN(amount) || amount <= 0) {
     return ctx.reply('Please provide a valid budget amount');
   }
-  if (isNaN(month) || month < 1 || month > 12) {
+  if (!Number.isInteger(month) || month < 1 || month > 12) {
     return ctx.reply('Please provide a valid month (1-12)');
   }
-  if (isNaN(year) || year < 2020) {
+  if (!Number.isInteger(year) || year < 2020 || year > 2100) {
     return ctx.reply('Please provide a valid year');
   }
 
@@ -815,7 +820,7 @@ bot.command('budget', async (ctx) => {
     ctx.reply(`✅ Budget set for ${categoryName}!\n${monthName} ${year}: ₹${amount.toFixed(2)}`);
   } catch (error: unknown) {
     console.error('Set budget error:', error);
-    ctx.reply(`❌ Error setting budget: ${error instanceof Error ? error instanceof Error ? error.message : "Unknown error" : 'Unknown error'}`);
+    ctx.reply(`❌ Error setting budget: ${userMessage(error)}`);
   }
 });
 
@@ -832,10 +837,10 @@ bot.command('budgetstatus', async (ctx) => {
     month = parseInt(args[1]);
     year = parseInt(args[2] || year.toString());
 
-    if (isNaN(month) || month < 1 || month > 12) {
+    if (!Number.isInteger(month) || month < 1 || month > 12) {
       return ctx.reply('Please provide a valid month (1-12)');
     }
-    if (isNaN(year) || year < 2020) {
+    if (!Number.isInteger(year) || year < 2020 || year > 2100) {
       return ctx.reply('Please provide a valid year');
     }
   }
@@ -923,7 +928,7 @@ bot.command('recur', async (ctx) => {
       ctx.reply(`✅ Recurrence created! ID: ${rec.id}`);
     } catch (error: unknown) {
       console.error('Create recurrence error:', error);
-      ctx.reply(`❌ Error: ${error instanceof Error ? error instanceof Error ? error.message : "Unknown error" : 'Unknown error'}`);
+      ctx.reply(`❌ Error: ${userMessage(error)}`);
     }
   } else if (subcmd === 'delete' || subcmd === 'remove') {
     const id = parts[1];
@@ -933,7 +938,7 @@ bot.command('recur', async (ctx) => {
       ctx.reply(`🗑️ Recurrence ${id} deactivated.`);
     } catch (error: unknown) {
       console.error('Delete recurrence error:', error);
-      ctx.reply(`❌ Error: ${error instanceof Error ? error instanceof Error ? error.message : "Unknown error" : 'Unknown error'}`);
+      ctx.reply(`❌ Error: ${userMessage(error)}`);
     }
   } else {
     ctx.reply('Unknown recurrence command. Use add, list, delete.');
@@ -959,7 +964,7 @@ bot.command('reminder', async (ctx) => {
       ctx.reply(`✅ Daily reminder enabled at ${time} IST.`);
     } catch (error: unknown) {
       console.error('Set reminder error:', error);
-      ctx.reply(`❌ Error: ${error instanceof Error ? error instanceof Error ? error.message : "Unknown error" : 'Unknown error'}`);
+      ctx.reply(`❌ Error: ${userMessage(error)}`);
     }
   } else if (action === 'off') {
     try {
@@ -967,7 +972,7 @@ bot.command('reminder', async (ctx) => {
       ctx.reply('✅ Daily reminder disabled.');
     } catch (error: unknown) {
       console.error('Disable reminder error:', error);
-      ctx.reply(`❌ Error: ${error instanceof Error ? error instanceof Error ? error.message : "Unknown error" : 'Unknown error'}`);
+      ctx.reply(`❌ Error: ${userMessage(error)}`);
     }
   } else {
     ctx.reply('Usage: /reminder on [HH:MM] | /reminder off');
@@ -1001,7 +1006,7 @@ bot.command('goal', async (ctx) => {
       ctx.reply(`✅ Goal created!\nName: ${goal.name}\nTarget: ₹${goal.target_amount.toFixed(2)}`);
     } catch (error: unknown) {
       console.error('Create goal error:', error);
-      ctx.reply(`❌ Error: ${error instanceof Error ? error instanceof Error ? error.message : "Unknown error" : 'Unknown error'}`);
+      ctx.reply(`❌ Error: ${userMessage(error)}`);
     }
   } else if (subcmd === 'progress') {
     // /goal progress <id> <amount>
@@ -1019,7 +1024,7 @@ bot.command('goal', async (ctx) => {
       ctx.reply(`✅ Progress updated!\n${updatedGoal.name}: ₹${updatedGoal.saved_amount.toFixed(2)} / ₹${updatedGoal.target_amount.toFixed(2)}`);
     } catch (error: unknown) {
       console.error('Update goal progress error:', error);
-      ctx.reply(`❌ Error: ${error instanceof Error ? error instanceof Error ? error.message : "Unknown error" : 'Unknown error'}`);
+      ctx.reply(`❌ Error: ${userMessage(error)}`);
     }
   } else if (subcmd === 'delete' || subcmd === 'remove') {
     const goalId = parts[1];
@@ -1031,7 +1036,7 @@ bot.command('goal', async (ctx) => {
       ctx.reply(`🗑️ Goal deleted.`);
     } catch (error: unknown) {
       console.error('Delete goal error:', error);
-      ctx.reply(`❌ Error: ${error instanceof Error ? error instanceof Error ? error.message : "Unknown error" : 'Unknown error'}`);
+      ctx.reply(`❌ Error: ${userMessage(error)}`);
     }
   } else {
     ctx.reply('Unknown goal command. Use set, list, progress, delete.');
@@ -1068,7 +1073,7 @@ bot.command('debt', async (ctx) => {
       ctx.reply(`✅ Debt recorded!\nYou lent ₹${debt.amount.toFixed(2)} to ${debt.counterparty}`);
     } catch (error: unknown) {
       console.error('Create debt error:', error);
-      ctx.reply(`❌ Error: ${error instanceof Error ? error.message : "Unknown error"}`);
+      ctx.reply(`❌ Error: ${userMessage(error)}`);
     }
   } else if (subcmd === 'borrow') {
     // /debt borrow <counterparty> <amount> [description]
@@ -1087,7 +1092,7 @@ bot.command('debt', async (ctx) => {
       ctx.reply(`✅ Debt recorded!\nYou borrowed ₹${debt.amount.toFixed(2)} from ${debt.counterparty}`);
     } catch (error: unknown) {
       console.error('Create debt error:', error);
-      ctx.reply(`❌ Error: ${error instanceof Error ? error.message : "Unknown error"}`);
+      ctx.reply(`❌ Error: ${userMessage(error)}`);
     }
   } else if (subcmd === 'settle') {
     // /debt settle <id> <amount>
@@ -1105,7 +1110,7 @@ bot.command('debt', async (ctx) => {
       ctx.reply(`✅ Debt settled!\n${updatedDebt.counterparty}: ₹${updatedDebt.settled_amount.toFixed(2)} / ₹${updatedDebt.amount.toFixed(2)} settled`);
     } catch (error: unknown) {
       console.error('Settle debt error:', error);
-      ctx.reply(`❌ Error: ${error instanceof Error ? error.message : "Unknown error"}`);
+      ctx.reply(`❌ Error: ${userMessage(error)}`);
     }
   } else if (subcmd === 'delete' || subcmd === 'remove') {
     const debtId = parts[1];
@@ -1117,7 +1122,7 @@ bot.command('debt', async (ctx) => {
       ctx.reply(`🗑️ Debt deleted.`);
     } catch (error: unknown) {
       console.error('Delete debt error:', error);
-      ctx.reply(`❌ Error: ${error instanceof Error ? error.message : "Unknown error"}`);
+      ctx.reply(`❌ Error: ${userMessage(error)}`);
     }
   } else {
     ctx.reply('Unknown debt command. Use lend, borrow, settle, list, delete.');
@@ -1141,7 +1146,7 @@ const showAccounts = async (ctx: BotContext) => {
     );
   } catch (error: unknown) {
     console.error('Account overview error:', error);
-    return ctx.reply(`❌ Error: ${error instanceof Error ? error.message : 'Unknown error'}`);
+    return ctx.reply(`❌ Error: ${userMessage(error)}`);
   }
 };
 
@@ -1159,13 +1164,14 @@ bot.command('account', async (ctx) => {
     // /account add <name> <type> [currency] [starting_balance]
     const name = parts[1];
     const type = parts[2];
-    const currency = parts[3] || 'INR';
+    const currency = (parts[3] || 'INR').toUpperCase();
     const startBalance = parts[4] ? parseFloat(parts[4]) : 0;
 
     if (!name && !type) return startAccountWizard(ctx);
     if (!name || !type) {
       return ctx.reply('Usage: /account add <name> <type> [currency] [starting_balance]\nTypes: checking, savings, credit, cash, investment, other');
     }
+    if (!/^[A-Z]{3}$/.test(currency)) return ctx.reply('The currency must be a 3-letter code such as INR or USD.');
     const validTypes = ['checking', 'savings', 'credit', 'cash', 'investment', 'other'];
     if (!validTypes.includes(type)) {
       return ctx.reply('Invalid account type. Valid types: checking, savings, credit, cash, investment, other');
@@ -1178,7 +1184,7 @@ bot.command('account', async (ctx) => {
       ctx.reply(`✅ Account created!\nName: ${account.name}\nType: ${account.type}\nCurrency: ${account.currency_code}\nBalance: ₹${account.current_balance.toFixed(2)}`);
     } catch (error: unknown) {
       console.error('Create account error:', error);
-      ctx.reply(`❌ Error: ${error instanceof Error ? error.message : "Unknown error"}`);
+      ctx.reply(`❌ Error: ${userMessage(error)}`);
     }
   } else if (subcmd === 'list') {
     try {
@@ -1193,7 +1199,7 @@ bot.command('account', async (ctx) => {
       ctx.reply(msg);
     } catch (error: unknown) {
       console.error('List accounts error:', error);
-      ctx.reply(`❌ Error: ${error instanceof Error ? error.message : "Unknown error"}`);
+      ctx.reply(`❌ Error: ${userMessage(error)}`);
     }
   } else if (subcmd === 'transfer') {
     // /account transfer <from_account_id> <to_account_id> <amount>
@@ -1213,7 +1219,7 @@ bot.command('account', async (ctx) => {
       ctx.reply(`✅ Transfer complete!\n${from.name} → ${to.name}: ₹${amount.toFixed(2)}`);
     } catch (error: unknown) {
       console.error('Transfer error:', error);
-      ctx.reply(`❌ Error: ${error instanceof Error ? error.message : "Unknown error"}`);
+      ctx.reply(`❌ Error: ${userMessage(error)}`);
     }
   } else if (subcmd === 'delete' || subcmd === 'remove') {
     const accountId = parts[1];
@@ -1225,7 +1231,7 @@ bot.command('account', async (ctx) => {
       ctx.reply('🗑️ Account deleted.');
     } catch (error: unknown) {
       console.error('Delete account error:', error);
-      ctx.reply(`❌ Error: ${error instanceof Error ? error.message : "Unknown error"}`);
+      ctx.reply(`❌ Error: ${userMessage(error)}`);
     }
   } else {
     ctx.reply('Unknown account command. Use: add, list, transfer, delete');
@@ -1251,7 +1257,7 @@ const sendLinkCode = async (ctx: BotContext) => {
     ctx.reply(`🔗 Your dashboard link code: ${code}\nEnter it on the dashboard's Settings page within ${expiresInMin} minutes.`);
   } catch (error: unknown) {
     console.error('Generate link code error:', error);
-    ctx.reply(`❌ Error: ${error instanceof Error ? error.message : "Unknown error"}`);
+    ctx.reply(`❌ Error: ${userMessage(error)}`);
   }
 };
 bot.command('link', sendLinkCode);

@@ -16,3 +16,8 @@ export function checkName(value: string, label: string, max = MAX_NAME): string 
   if (s.length > max) throw new Error(`That ${label} is too long. The maximum is ${max} characters.`);
   return s;
 }
+
+// Month 1-12 and a sane year, both whole numbers. Callback data and typed arguments are client-supplied.
+export function isValidYearMonth(year: number, month: number): boolean {
+  return Number.isInteger(year) && Number.isInteger(month) && month >= 1 && month <= 12 && year >= 2020 && year <= 2100;
+}

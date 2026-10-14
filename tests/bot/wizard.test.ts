@@ -81,4 +81,20 @@ describe('wizard engine', () => {
     await t.tap('w:0:0'); // step 0 already answered
     expect(t.ctx.session.wizard.step).toBe(1);
   });
+  it('ignores a stale button on a text-only step instead of finishing it', async () => {
+    const saved: unknown[] = [];
+    const w: Wizard = {
+      id: 'confirm',
+      steps: [{ key: 'confirm', ask: () => ({ text: 'Type DELETE' }), text: s => (s === 'DELETE' ? { value: true } : { error: 'no' }) }],
+      finish: async (_c, d) => { saved.push(d); return { text: 'done' }; },
+    };
+    const t = setup(w);
+    await startWizard(t.ctx, 'confirm');
+    await t.tap('w:0:0');
+    await t.tap('w:0:skip');
+    expect(saved).toEqual([]);
+    expect(t.ctx.session.wizard).toBeDefined();
+    await t.type('DELETE');
+    expect(saved).toEqual([{ confirm: true }]);
+  });
 });

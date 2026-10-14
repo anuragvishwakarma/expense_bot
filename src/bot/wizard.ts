@@ -100,7 +100,10 @@ export function registerWizards(bot: Telegraf<BotContext>, wizards: Wizard[]) {
     const w = ctx.session.wizard;
     if (!ctx.session.user || !w || !registry.has(w.id)) return expired(ctx);
     if (w.step !== stepIdx) return ctx.answerCbQuery('Already answered');
-    w.data[registry.get(w.id)!.steps[w.step].key] = pick(w);
+    const value = pick(w);
+    // A stale button from an older wizard can carry an index/skip this step never offered.
+    if (value === undefined) return ctx.answerCbQuery('Already answered');
+    w.data[registry.get(w.id)!.steps[w.step].key] = value;
     w.step++;
     await ctx.answerCbQuery();
     return advance(ctx, true);

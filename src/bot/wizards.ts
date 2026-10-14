@@ -349,7 +349,8 @@ export function buildWizards(deps: Deps): Wizard[] {
         text: s => (s === 'DELETE' ? { value: true } : { error: 'Type DELETE in capitals to confirm, or tap Cancel.' }),
       },
     ],
-    finish: async ctx => {
+    finish: async (ctx, d) => {
+      if (d.confirm !== true) throw new Error('Deletion was not confirmed. Nothing was deleted.');
       const { loginDeleted } = await deps.deletion.deleteEverything(uid(ctx));
       ctx.session.user = null; // the next message starts a brand-new empty profile
       return {

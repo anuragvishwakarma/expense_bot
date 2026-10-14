@@ -1379,6 +1379,8 @@ bot.on('voice', async (ctx) => {
 // Handle callback queries for voice confirmation
 bot.action(/voice_(yes|no)/, async (ctx) => {
   const userId = ctx.from.id.toString();
+  const dbUserId = ctx.session.user?.id; // pending maps are keyed by Telegram id; the DB wants users.id
+  if (!dbUserId) return ctx.answerCbQuery('Please send /start first.');
   const transcription = voicePending.get(userId);
   if (!transcription) {
     return ctx.answerCbQuery('No pending voice transcription.', { show_alert: true });
@@ -1401,7 +1403,7 @@ bot.action(/voice_(yes|no)/, async (ctx) => {
       }
       // Use the transaction service to add the transaction
       const transaction = await transactionService.addTransaction(
-        userId,
+        dbUserId,
         input,
         type
       );
@@ -1500,6 +1502,8 @@ bot.on('photo', async (ctx) => {
 // Handle callback queries for OCR confirmation
 bot.action(/ocr_(yes|no)/, async (ctx) => {
   const userId = ctx.from.id.toString();
+  const dbUserId = ctx.session.user?.id; // pending maps are keyed by Telegram id; the DB wants users.id
+  if (!dbUserId) return ctx.answerCbQuery('Please send /start first.');
   const pending = pendingOCR.get(userId);
   if (!pending) {
     return ctx.answerCbQuery('No pending OCR result.', { show_alert: true });
@@ -1507,7 +1511,7 @@ bot.action(/ocr_(yes|no)/, async (ctx) => {
   if (ctx.match[1] === 'yes') {
     try {
       const transaction = await transactionService.addTransaction(
-        userId,
+        dbUserId,
         `${pending.amount} ${pending.description}`,
         'expense'
       );

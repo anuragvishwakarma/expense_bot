@@ -36,6 +36,15 @@ wrong as (
     and p.tablename in (select tbl from expected)
     and position('auth_user_id' in coalesce(p.qual, '') || ' ' || coalesce(p.with_check, '')) = 0
 ),
+-- 3b. transactions and budgets writes must also check that the referenced category (and account) is the user's own
+-- (supabase/ownership_checks.sql)
+refs as (
+  select 'no ownership check on references', p.tablename::text, p.policyname::text || ' (' || p.cmd || ') does not check the referenced rows'
+  from pg_policies p
+  where p.schemaname = 'public' and p.cmd in ('INSERT', 'UPDATE')
+    and ((p.tablename = 'transactions' and (position('categories' in coalesce(p.with_check, '')) = 0 or position('accounts' in coalesce(p.with_check, '')) = 0))
+      or (p.tablename = 'budgets' and position('categories' in coalesce(p.with_check, '')) = 0))
+),
 -- 4. users must stay read-only for a dashboard session, or a login could re-link itself
 users_writable as (
   select 'users writable', 'users', p.policyname::text || ' allows ' || p.cmd
@@ -45,5 +54,6 @@ users_writable as (
 select * from rls_off
 union all select * from missing
 union all select * from wrong
+union all select * from refs
 union all select * from users_writable
 order by 1, 2, 3;

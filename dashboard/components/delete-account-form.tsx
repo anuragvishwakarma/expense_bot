@@ -4,6 +4,7 @@ import { useState } from 'react'
 
 export default function DeleteAccountForm(): React.ReactElement {
   const [confirm, setConfirm] = useState('')
+  const [password, setPassword] = useState('')
   const [error, setError] = useState<string | null>(null)
   const [loading, setLoading] = useState(false)
 
@@ -16,7 +17,7 @@ export default function DeleteAccountForm(): React.ReactElement {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         credentials: 'include',
-        body: JSON.stringify({ confirm }),
+        body: JSON.stringify({ confirm, password }),
       })
       const data = await res.json()
       if (!res.ok) {
@@ -36,6 +37,16 @@ export default function DeleteAccountForm(): React.ReactElement {
       {error && (
         <div className="p-3 bg-destructive/10 border border-destructive/20 rounded-md text-destructive text-sm">{error}</div>
       )}
+      <input
+        type="password"
+        value={password}
+        onChange={(e) => setPassword(e.target.value)}
+        disabled={loading}
+        autoComplete="current-password"
+        className="w-full px-4 py-2 border border-input rounded-lg bg-card text-foreground focus:outline-none focus:ring-2 focus:ring-ring disabled:opacity-60"
+        placeholder="Your password"
+        aria-label="Your password"
+      />
       <div className="flex gap-2">
         <input
           type="text"
@@ -49,7 +60,7 @@ export default function DeleteAccountForm(): React.ReactElement {
         />
         <button
           type="submit"
-          disabled={loading || confirm !== 'DELETE'}
+          disabled={loading || confirm !== 'DELETE' || !password}
           className="bg-destructive text-white px-4 py-2 rounded-lg font-medium hover:bg-destructive/90 disabled:opacity-50 transition-colors"
         >
           {loading ? 'Deleting...' : 'Delete everything'}

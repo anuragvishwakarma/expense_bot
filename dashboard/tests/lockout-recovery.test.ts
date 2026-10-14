@@ -1,6 +1,7 @@
 /** @jest-environment node */
 import { NextRequest } from 'next/server'
 
+process.env.SUPABASE_SERVICE_ROLE_KEY = 'test-secret'
 let signInOk = false
 let user: { email: string } | null = { email: 'owner@example.com' }
 jest.mock('@supabase/ssr', () => ({
@@ -17,10 +18,11 @@ jest.mock('@supabase/ssr', () => ({
 jest.mock('@/lib/auth', () => ({ getUserIdFromRequest: async () => 'u1' }))
 
 import { POST as login } from '../app/api/auth/login/route'
+import { signResetToken } from '@/lib/resetToken'
 import { POST as reset } from '../app/api/auth/reset-password/route'
 
 const post = (path: string, body: unknown, ip: string) =>
-  new NextRequest(`http://localhost${path}`, { method: 'POST', headers: { 'content-type': 'application/json', 'x-forwarded-for': ip }, body: JSON.stringify(body) })
+  new NextRequest(`http://localhost${path}`, { method: 'POST', headers: { 'content-type': 'application/json', 'x-forwarded-for': ip, cookie: `pw_reset=${signResetToken('u1')}` }, body: JSON.stringify(body) })
 
 describe('lockout recovery', () => {
   it('an attacker spread across addresses can lock an account, but a completed password reset lifts it', async () => {

@@ -10,7 +10,7 @@ jest.mock('@supabase/ssr', () => ({
   createServerClient: () => ({
     auth: {
       resetPasswordForEmail: record('resetPasswordForEmail'),
-      exchangeCodeForSession: record('exchangeCodeForSession'),
+      exchangeCodeForSession: async (...args: unknown[]) => { calls.push({ fn: 'exchangeCodeForSession', args }); return { error: authError, data: { session: { user: { id: 'u1' } } } } },
       verifyOtp: record('verifyOtp'),
       updateUser: record('updateUser'),
       signOut: record('signOut'),
@@ -23,10 +23,13 @@ import { POST as forgot } from '../app/api/auth/forgot-password/route'
 import { POST as reset } from '../app/api/auth/reset-password/route'
 import { GET as callback } from '../app/auth/callback/route'
 import { safeNext } from '@/lib/authRedirect'
+import { signResetToken, verifyResetToken, RESET_MAX_AGE_S } from '@/lib/resetToken'
 import { createRateLimiter } from '@/lib/rateLimit'
 
 const post = (path: string, body: unknown, headers: Record<string, string> = {}) =>
   new NextRequest(`http://localhost${path}`, { method: 'POST', headers: { 'content-type': 'application/json', ...headers }, body: typeof body === 'string' ? body : JSON.stringify(body) })
+process.env.SUPABASE_SERVICE_ROLE_KEY = 'test-secret'
+const withReset = { cookie: `pw_reset=${signResetToken('u1')}` }
 const get = (qs: string) => new NextRequest(`http://localhost/auth/callback?${qs}`)
 
 beforeEach(() => { calls.length = 0; authUser = 'u1'; authError = null; process.env.NEXT_PUBLIC_SITE_URL = 'https://dash.example' })
@@ -71,6 +74,17 @@ describe('GET /auth/callback', () => {
     const res = await callback(get('code=abc&next=/reset-password'))
     expect(calls[0]).toEqual({ fn: 'exchangeCodeForSession', args: ['abc'] })
     expect(new URL(res.headers.get('location')!).pathname).toBe('/reset-password')
+    const cookie = res.headers.getSetCookie().find(c => c.startsWith('pw_reset='))!
+    expect(cookie).toMatch(/HttpOnly/i)
+    expect(cookie).toMatch(/SameSite=lax/i)
+    expect(cookie).toMatch(/Max-Age=900/)
+    expect(verifyResetToken(decodeURIComponent(cookie.split(';')[0].slice('pw_reset='.length)), 'u1')).toBe(true)
+  })
+
+  it('sets no reset cookie when the link is bad', async () => {
+    authError = { message: 'expired' }
+    const res = await callback(get('code=abc'))
+    expect(res.headers.getSetCookie().some(c => c.startsWith('pw_reset='))).toBe(false)
   })
 
   it('refuses token_hash links: they are not bound to the requesting browser (login CSRF)', async () => {
@@ -103,25 +117,41 @@ describe('GET /auth/callback', () => {
 describe('POST /api/auth/reset-password', () => {
   it('needs the session the reset link created', async () => {
     authUser = null
+    expect((await reset(post('/api/auth/reset-password', { password: 'long-enough-1' }, withReset))).status).toBe(401)
+    expect(calls).toHaveLength(0)
+  })
+
+  it('refuses a plain logged-in session that never redeemed a reset link (stolen cookie case)', async () => {
     expect((await reset(post('/api/auth/reset-password', { password: 'long-enough-1' }))).status).toBe(401)
     expect(calls).toHaveLength(0)
   })
 
+  it('refuses a forged, foreign, tampered or expired reset cookie', async () => {
+    const old = signResetToken('u1', Date.now() - (RESET_MAX_AGE_S + 1) * 1000)
+    const good = signResetToken('u1')
+    for (const value of ['1', signResetToken('someone-else'), good.slice(0, -1) + (good.endsWith('a') ? 'b' : 'a'), old, '']) {
+      const res = await reset(post('/api/auth/reset-password', { password: 'long-enough-1' }, { cookie: `pw_reset=${value}` }))
+      expect(res.status).toBe(401)
+    }
+    expect(calls).toHaveLength(0)
+  })
+
   it('refuses cross-site requests', async () => {
-    expect((await reset(post('/api/auth/reset-password', { password: 'long-enough-1' }, { origin: 'https://evil.example' }))).status).toBe(403)
+    expect((await reset(post('/api/auth/reset-password', { password: 'long-enough-1' }, { ...withReset, origin: 'https://evil.example' }))).status).toBe(403)
     expect(calls).toHaveLength(0)
   })
 
   it('enforces length limits', async () => {
     for (const password of ['short', '', 'x'.repeat(73), 12345678, undefined]) {
-      expect((await reset(post('/api/auth/reset-password', { password }))).status).toBe(400)
+      expect((await reset(post('/api/auth/reset-password', { password }, withReset))).status).toBe(400)
     }
     expect(calls).toHaveLength(0)
   })
 
   it('updates the password and signs every other session out', async () => {
-    const res = await reset(post('/api/auth/reset-password', { password: 'long-enough-1' }, { origin: 'http://localhost' }))
+    const res = await reset(post('/api/auth/reset-password', { password: 'long-enough-1' }, { ...withReset, origin: 'http://localhost' }))
     expect(res.status).toBe(200)
+    expect(res.headers.getSetCookie().join(' ')).toMatch(/pw_reset=;/) // single use
     expect(calls.map(c => c.fn)).toEqual(['updateUser', 'signOut'])
     expect(calls[0].args).toEqual([{ password: 'long-enough-1' }])
     expect(calls[1].args).toEqual([{ scope: 'others' }])
@@ -129,7 +159,7 @@ describe('POST /api/auth/reset-password', () => {
 
   it("passes Supabase's own message on (same password, weak password) without signing others out", async () => {
     authError = { message: 'New password should be different from the old password.' }
-    const res = await reset(post('/api/auth/reset-password', { password: 'long-enough-1' }))
+    const res = await reset(post('/api/auth/reset-password', { password: 'long-enough-1' }, withReset))
     expect(res.status).toBe(400)
     expect((await res.json()).error).toMatch(/different/)
     expect(calls.map(c => c.fn)).toEqual(['updateUser'])

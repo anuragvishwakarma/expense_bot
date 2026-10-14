@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createServerClient } from '@supabase/ssr'
 import { safeNext } from '@/lib/authRedirect'
+import { RESET_COOKIE, RESET_MAX_AGE_S, signResetToken } from '@/lib/resetToken'
 
 const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL!
 const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
@@ -26,6 +27,16 @@ export async function GET(request: NextRequest) {
 
   const code = searchParams.get('code')
   if (!code) return failure
-  const { error } = await supabase.auth.exchangeCodeForSession(code)
-  return error ? failure : success
+  const { data, error } = await supabase.auth.exchangeCodeForSession(code)
+  const userId = data?.session?.user?.id
+  if (error || !userId) return failure
+  // Bound to this user and signed, so it cannot be forged from a stolen session cookie
+  success.cookies.set(RESET_COOKIE, signResetToken(userId), {
+    httpOnly: true,
+    sameSite: 'lax',
+    secure: process.env.NODE_ENV === 'production',
+    path: '/',
+    maxAge: RESET_MAX_AGE_S,
+  })
+  return success
 }

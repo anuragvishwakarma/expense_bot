@@ -1,11 +1,14 @@
 import Link from 'next/link'
 import ResetPasswordForm from '@/components/reset-password-form'
+import { cookies } from 'next/headers'
 import { getUserIdFromRequest } from '@/lib/auth'
+import { RESET_COOKIE, verifyResetToken } from '@/lib/resetToken'
 
 export const dynamic = 'force-dynamic'
 
 export default async function ResetPasswordPage() {
-  const signedIn = !!(await getUserIdFromRequest())
+  const userId = await getUserIdFromRequest()
+  const signedIn = !!userId && verifyResetToken((await cookies()).get(RESET_COOKIE)?.value, userId)
   return (
     <div className="min-h-screen flex items-center justify-center bg-background py-12 px-4">
       <div className="w-full max-w-md bg-card border border-border rounded-lg">

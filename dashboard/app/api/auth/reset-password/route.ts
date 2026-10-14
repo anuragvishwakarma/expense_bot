@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { createServerClient } from '@supabase/ssr'
 import { getUserIdFromRequest } from '@/lib/auth'
 import { clearAccountFailures } from '@/lib/loginThrottle'
+import { RESET_COOKIE, verifyResetToken } from '@/lib/resetToken'
 
 const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL!
 const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
@@ -13,8 +14,10 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
   }
 
-  // The reset link signed the user in; no session means the link expired or was never used
-  if (!(await getUserIdFromRequest())) {
+  // The reset link signed the user in and set a signed RESET_COOKIE for that user. A session without
+  // it is an ordinary login, which must not be able to set a new password without the old one.
+  const userId = await getUserIdFromRequest()
+  if (!userId || !verifyResetToken(request.cookies.get(RESET_COOKIE)?.value, userId)) {
     return NextResponse.json({ error: 'This reset link has expired. Request a new one.' }, { status: 401 })
   }
 
@@ -49,5 +52,7 @@ export async function POST(request: NextRequest) {
   // A changed password should end every other session (a stolen one, an old device)
   await supabase.auth.signOut({ scope: 'others' })
 
-  return NextResponse.json({ message: 'Password updated' }, { headers: cookieCarrier.headers })
+  const res = NextResponse.json({ message: 'Password updated' }, { headers: cookieCarrier.headers })
+  res.cookies.delete(RESET_COOKIE) // one reset, one password change
+  return res
 }

@@ -236,3 +236,61 @@ describe('processNlpExpenseMessage', () => {
     expect(reply).toContain('Spent: ₹300 · Received: ₹500');
   });
 });
+
+describe('parseExpenseText: untrusted model output', () => {
+  const ORIGINAL_ENV = process.env;
+  beforeEach(() => {
+    jest.resetAllMocks();
+    process.env = { ...ORIGINAL_ENV, OPENROUTER_API_KEY: 'test-key' };
+  });
+  afterAll(() => { process.env = ORIGINAL_ENV; });
+
+  const reply = (items: unknown[]) =>
+    mockedAxios.post.mockResolvedValue({ data: { choices: [{ message: { content: JSON.stringify({ items }) } }] } });
+
+  it('drops impossible amounts: over the cap, zero, negative', async () => {
+    reply([
+      { amount: 99999999999, description: 'hacked', category: 'Food' },
+      { amount: 0, description: 'free', category: 'Food' },
+      { amount: -5, description: 'negative', category: 'Food' },
+      { amount: 99999999, description: 'at the cap', category: 'Food' },
+    ]);
+    const result = await parseExpenseText('x 1', ['Food']);
+    expect(result).toEqual([{ amount: 99999999, description: 'at the cap', category: 'Food' }]);
+  });
+
+  it('files a category the user does not have under Other, for expenses and income', async () => {
+    reply([
+      { amount: 10, description: 'a', category: 'Admin' },
+      { amount: 20, description: 'refund received', category: 'Admin', type: 'income' },
+    ]);
+    const result = await parseExpenseText('refund received 20, a 10', ['Food'], ['Salary']);
+    expect(result).toEqual([
+      { amount: 10, description: 'a', category: 'Other' },
+      { amount: 20, description: 'refund received', category: 'Other', type: 'income' },
+    ]);
+  });
+
+  it('trims and bounds the description, and skips blank ones', async () => {
+    reply([
+      { amount: 1, description: '  padded  ', category: 'Food' },
+      { amount: 2, description: 'x'.repeat(5000), category: 'Food' },
+      { amount: 3, description: '   ', category: 'Food' },
+    ]);
+    const result = await parseExpenseText('x 1', ['Food']);
+    expect(result).toHaveLength(2);
+    expect(result![0].description).toBe('padded');
+    expect(result![1].description).toHaveLength(200);
+  });
+
+  it('keeps at most 10 items from one message', async () => {
+    reply(Array.from({ length: 40 }, (_, i) => ({ amount: i + 1, description: `item ${i}`, category: 'Food' })));
+    const result = await parseExpenseText('x 1', ['Food']);
+    expect(result).toHaveLength(10);
+  });
+
+  it('returns null when nothing valid is left', async () => {
+    reply([{ amount: 99999999999, description: 'hacked', category: 'Food' }]);
+    expect(await parseExpenseText('x 1', ['Food'])).toBeNull();
+  });
+});

@@ -1,4 +1,6 @@
 import axios from 'axios';
+import { MAX_AMOUNT } from '../utils/limits';
+import { CONFIG } from '../config';
 
 export interface ParsedExpenseItem {
   amount: number;
@@ -9,6 +11,8 @@ export interface ParsedExpenseItem {
 
 const OPENROUTER_URL = 'https://openrouter.ai/api/v1/chat/completions';
 const MODEL = 'meta-llama/llama-3.1-8b-instruct';
+// The multi-item path saves without a confirm card, so cap what one message can create
+const MAX_ITEMS = 10;
 
 // The small model sometimes files money the user SENT as income. Income needs an
 // explicit receipt word in the message or the item; everything else is an expense.
@@ -55,16 +59,20 @@ export async function parseExpenseText(
     const parsed = JSON.parse(content);
     if (!Array.isArray(parsed?.items) || parsed.items.length === 0) return null;
 
+    // The model's answer is untrusted (a message can tell it what to return): keep only sane
+    // amounts, bounded descriptions, and categories the user really has.
     const items: ParsedExpenseItem[] = [];
-    for (const item of parsed.items) {
-      if (typeof item?.amount !== 'number' || !item.description || !item.category) continue;
-      const description = String(item.description);
+    for (const item of parsed.items.slice(0, MAX_ITEMS)) {
+      if (typeof item?.amount !== 'number' || !Number.isFinite(item.amount) || item.amount <= 0 || item.amount > MAX_AMOUNT) continue;
+      if (typeof item.description !== 'string' || !item.description.trim() || !item.category) continue;
+      const description = item.description.trim().slice(0, CONFIG.MAX_DESCRIPTION_LENGTH);
       let category = String(item.category);
       let type: 'income' | 'expense' | undefined = item.type === 'income' || item.type === 'expense' ? item.type : undefined;
-      if (type === 'income' && !INCOME_WORDS.test(`${text} ${description}`)) {
-        type = 'expense';
-        if (!candidateCategories.includes(category)) category = 'Other';
-      }
+      if (type === 'income' && !INCOME_WORDS.test(`${text} ${description}`)) type = 'expense';
+      const allowed = type === 'income' ? incomeCategories : candidateCategories;
+      // (no income list given: nothing to check an income category against)
+      const unchecked = type === 'income' && incomeCategories.length === 0;
+      if (!unchecked && !allowed.includes(category)) category = 'Other';
       items.push({ amount: item.amount, description, category, ...(type ? { type } : {}) });
     }
 

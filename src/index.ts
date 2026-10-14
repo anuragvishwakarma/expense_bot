@@ -1463,6 +1463,10 @@ bot.on('photo', async (ctx) => {
   if (!ctx.session.user) {
     return ctx.reply('Please start the bot first with /start');
   }
+  // Say so up front when OCR is not set up, instead of downloading the photo and failing
+  if (!ocrService.isConfigured()) {
+    return ctx.reply('🧾 Receipt photos are not switched on yet. Please type it instead, for example /add 250 lunch.');
+  }
   // Get the largest photo
   const photo = ctx.message.photo[ctx.message.photo.length - 1];
   const file_id = photo.file_id;

@@ -14,7 +14,6 @@ Log income: +1000 salary
 4️⃣ Open the web dashboard for charts and trends: /dashboard
 
 Prefer buttons? Send /menu. Any command without details (like /budget or /goal) walks you through it with buttons.
-Tip: you can also send a voice note or a photo of a receipt.
 By using this bot you agree to the terms and privacy policy: /privacy
 All commands: /help`;
 

@@ -14,6 +14,11 @@ export class OCRService {
     }
   }
 
+  // Photos are only read when a key is set; the bot says so up front otherwise (like voice notes)
+  isConfigured(): boolean {
+    return !!this.apiKey;
+  }
+
   async getOCRFromBuffer(image: Buffer): Promise<{ text: string } | null> {
     if (!this.apiKey) return null;
     try {

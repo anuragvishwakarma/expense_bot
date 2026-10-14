@@ -21,6 +21,7 @@ import { privateOnly } from './bot/privateOnly';
 import { userRateLimit } from './bot/rateLimit';
 import { takePaidCall, PAID_QUOTA_MESSAGE } from './bot/paidQuota';
 import { mdEscape } from './bot/ui';
+import { isTransferExpired, readTransferAmount } from './bot/transfer';
 import { todayIST } from './utils/ist';
 import { alertOwner } from './utils/alert';
 import { startHealthServer } from './health';
@@ -134,7 +135,7 @@ bot.action(/^tf_from:(.+)$/, async (ctx) => {
   const accounts = await accountService.listAccounts(ctx.session.user.id);
   const from = ctx.match[1];
   if (!accounts.some(a => a.id === from)) return ctx.answerCbQuery('Account not found');
-  ctx.session.pendingTransfer = { from };
+  ctx.session.pendingTransfer = { from, at: Date.now() };
   await ctx.answerCbQuery();
   await ctx.editMessageText('Transfer to which account?', accountButtons(accounts.filter(a => a.id !== from), 'tf_to'));
 });
@@ -151,6 +152,7 @@ bot.action(/^tf_to:(.+)$/, async (ctx) => {
   const to = accounts.find(a => a.id === ctx.match[1]);
   if (!from || !to || from.id === to.id) return ctx.answerCbQuery('Account not found');
   pending.to = to.id;
+  pending.at = Date.now(); // the amount reply gets a fresh window
   await ctx.answerCbQuery();
   await ctx.editMessageText(`${from.name} → ${to.name}\nHow much? Send an amount like 10000 (or any /command to cancel).`);
 });
@@ -160,14 +162,13 @@ bot.on('text', async (ctx, next) => {
   const pending = ctx.session.pendingTransfer;
   if (!ctx.session.user || !pending?.to) return next();
   const text = ctx.message.text.trim();
-  if (text.startsWith('/')) {
+  if (text.startsWith('/') || isTransferExpired(pending)) {
     ctx.session.pendingTransfer = undefined;
     return next();
   }
-  const amount = parseFloat(text.replace(/,/g, ''));
-  if (isNaN(amount) || amount <= 0) {
-    return ctx.reply('Send a valid amount like 10000, or any /command to cancel.');
-  }
+  const read = readTransferAmount(text);
+  if ('error' in read) return ctx.reply(read.error);
+  const { amount } = read;
   ctx.session.pendingTransfer = undefined;
   try {
     const { from, to } = await accountService.transfer(ctx.session.user.id, pending.from, pending.to, amount);

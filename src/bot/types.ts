@@ -26,7 +26,7 @@ export interface SessionData {
     last_name?: string;
   } | null;
   // Button-driven /transfer flow state (in-memory, lost on restart)
-  pendingTransfer?: { from: string; to?: string };
+  pendingTransfer?: { from: string; to?: string; at: number };
   // /account add wizard: type chosen, then name, then starting balance
   pendingAccount?: { type: string; name?: string };
   // Confirmation card for a free-text entry, waiting for Save / edits

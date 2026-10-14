@@ -1,6 +1,7 @@
 import { checkAmount, checkName } from '../utils/limits';
 import { getSupabase } from '../db';
 import { matchCategory } from '../utils/parseBudget';
+import { fetchAllRows } from '../utils/fetchAllRows';
 
 interface Category {
   name: string;
@@ -85,21 +86,20 @@ export class BudgetService {
     const lastDay = new Date(year, month, 0).getDate();
     const endDate = `${year}-${month.toString().padStart(2, '0')}-${lastDay.toString().padStart(2, '0')}`;
     
-    const { data: expenses, error: expenseError } = await supabase
+    const expensesTyped = await fetchAllRows<TransactionWithCategory>((from, to) => supabase
       .from('transactions')
       .select(`
         amount,
         category:categories!inner(name)
-      `)
+      `, { count: 'exact' })
       .eq('user_id', userId)
       .eq('type', 'expense')
       .gte('date', startDate)
-      .lte('date', endDate);
+      .lte('date', endDate)
+      .order('id', { ascending: true })
+      .range(from, to));
 
-    if (expenseError) throw expenseError;
-    
     const budgetsTyped = budgets as unknown as BudgetWithCategory[];
-    const expensesTyped = expenses as unknown as TransactionWithCategory[];
 
     // Calculate spent by category
     const spentByCategory = expensesTyped.reduce((acc, t) => {

@@ -1,4 +1,4 @@
-import { clearPending, liveEntry, ENTRY_TTL_MS } from '../../src/bot/pending';
+import { clearPending, liveEntry, liveBatch, ENTRY_TTL_MS } from '../../src/bot/pending';
 import { SessionData } from '../../src/bot/types';
 
 const entry = (at: number) => ({ amount: 10, description: 'x', type: 'expense' as const, category: null, accountId: 'a', at });
@@ -8,13 +8,14 @@ const busy = (): SessionData => ({
   pendingTransfer: { from: 'a', at: 1 },
   pendingAccount: { type: 'cash' },
   pendingEntry: entry(1),
+  pendingBatch: { items: [], at: 1 },
 });
 
 describe('clearPending', () => {
   it('drops every waiting-for-a-reply slot so a stale one cannot swallow the next message', () => {
     const s = busy();
     clearPending(s);
-    expect([s.wizard, s.pendingTransfer, s.pendingAccount, s.pendingEntry]).toEqual([undefined, undefined, undefined, undefined]);
+    expect([s.wizard, s.pendingTransfer, s.pendingAccount, s.pendingEntry, s.pendingBatch]).toEqual([undefined, undefined, undefined, undefined, undefined]);
   });
 
   it('leaves the signed-in user alone', () => {
@@ -38,5 +39,14 @@ describe('liveEntry', () => {
 
   it('returns undefined when there is none', () => {
     expect(liveEntry({ user: null })).toBeUndefined();
+  });
+});
+
+describe('liveBatch', () => {
+  it('expires an old batch so Save all on it cannot fire', () => {
+    const s: SessionData = { user: null, pendingBatch: { items: [], at: 1000 } };
+    expect(liveBatch(s, 1000 + ENTRY_TTL_MS)).toBeDefined();
+    expect(liveBatch(s, 1000 + ENTRY_TTL_MS + 1)).toBeUndefined();
+    expect(s.pendingBatch).toBeUndefined();
   });
 });

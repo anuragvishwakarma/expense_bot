@@ -11,7 +11,7 @@ export interface ParsedExpenseItem {
 
 const OPENROUTER_URL = 'https://openrouter.ai/api/v1/chat/completions';
 const MODEL = 'meta-llama/llama-3.1-8b-instruct';
-// The multi-item path saves without a confirm card, so cap what one message can create
+// One message can create at most this many entries (several are shown for confirmation first)
 const MAX_ITEMS = 10;
 
 // The small model sometimes files money the user SENT as income. Income needs an
@@ -63,7 +63,7 @@ export async function parseExpenseText(
     // amounts, bounded descriptions, and categories the user really has.
     const items: ParsedExpenseItem[] = [];
     for (const item of parsed.items.slice(0, MAX_ITEMS)) {
-      if (typeof item?.amount !== 'number' || !Number.isFinite(item.amount) || item.amount <= 0 || item.amount > MAX_AMOUNT) continue;
+      if (typeof item?.amount !== 'number' || !Number.isFinite(item.amount) || item.amount < 0.01 || item.amount > MAX_AMOUNT) continue;
       if (typeof item.description !== 'string' || !item.description.trim() || !item.category) continue;
       const description = item.description.trim().slice(0, CONFIG.MAX_DESCRIPTION_LENGTH);
       let category = String(item.category);
@@ -90,7 +90,7 @@ export async function parseExpenseText(
  * uppercase 3-letter description (e.g. "KFC", "ATM") for a currency code.
  */
 export function formatForAddTransaction(amount: number, description: string): string {
-  return `₹${amount} ${description}`;
+  return `₹${amount.toFixed(2)} ${description}`; // toFixed: a raw 1e-7 would be read back as 1
 }
 
 export interface ExpenseSaveResult {

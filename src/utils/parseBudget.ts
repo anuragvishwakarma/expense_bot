@@ -21,7 +21,9 @@ export function matchCategory(names: string[], input: string): string | null {
   const q = input.trim().toLowerCase();
   const exact = names.find(n => n.toLowerCase() === q);
   if (exact) return exact;
-  const partial = names.filter(n => n.toLowerCase().includes(q));
+  // A mid-word hit ("bus" inside "Airbus") is not a match; the query must start the name or one of its words
+  const atWordStart = new RegExp(`(^|[^a-z0-9])${q.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}`);
+  const partial = names.filter(n => atWordStart.test(n.toLowerCase()));
   if (partial.length <= 1) return partial[0] ?? null;
   const prefixed = partial.filter(n => n.toLowerCase().startsWith(q));
   if (prefixed.length === 1) return prefixed[0];

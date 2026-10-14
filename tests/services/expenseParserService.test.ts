@@ -9,6 +9,14 @@ import {
 jest.mock('axios');
 const mockedAxios = axios as jest.Mocked<typeof axios>;
 
+describe('formatForAddTransaction amounts', () => {
+  it('writes two decimals, never exponent notation that parseAmount would cut short', () => {
+    expect(formatForAddTransaction(50, 'lunch')).toBe('₹50.00 lunch');
+    expect(formatForAddTransaction(1e-7, 'x')).toBe('₹0.00 x');
+    expect(parseAmount(formatForAddTransaction(12.5, 'tea'))?.amount).toBe(12.5);
+  });
+});
+
 describe('parseExpenseText', () => {
   const ORIGINAL_ENV = process.env;
 

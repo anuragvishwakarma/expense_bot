@@ -3,6 +3,7 @@
 export const MAX_AMOUNT = 99_999_999; // numeric(10,2) holds up to 99,999,999.99
 export const MAX_NAME = 40; // account, goal, debt person, recurring name, category
 export const MAX_NOTE = 100;
+export const MAX_CATEGORIES = 60; // expense categories per user; /budget creates one for every unmatched name
 
 export function checkAmount(n: number, label = 'amount', { allowZero = false } = {}): number {
   if (!Number.isFinite(n) || n < 0 || (n === 0 && !allowZero)) throw new Error(`The ${label} must be more than 0.`);

@@ -1,4 +1,5 @@
 import { Context } from 'telegraf';
+import { ParsedExpenseItem } from '../services/expenseParserService';
 
 export interface PendingEntry {
   amount: number;
@@ -32,6 +33,8 @@ export interface SessionData {
   pendingAccount?: { type: string; name?: string };
   // Confirmation card for a free-text entry, waiting for Save / edits
   pendingEntry?: PendingEntry;
+  // Several entries parsed from one free-text message, waiting for Save all / Cancel
+  pendingBatch?: { items: ParsedExpenseItem[]; at: number };
   // Generic step-by-step card flow (budget, goal, debt, recurring, ...)
   wizard?: WizardState;
 }

@@ -1,4 +1,4 @@
-import { checkAmount, checkName } from '../utils/limits';
+import { checkAmount, checkName, MAX_CATEGORIES } from '../utils/limits';
 import { getSupabase } from '../db';
 import { matchCategory } from '../utils/parseBudget';
 import { fetchAllRows } from '../utils/fetchAllRows';
@@ -38,6 +38,9 @@ export class BudgetService {
       categoryId = cats!.find(c => c.name === matched)!.id;
     } else {
       categoryName = checkName(categoryName, 'category'); // a brand-new category name is capped
+      if ((cats ?? []).length >= MAX_CATEGORIES) {
+        throw new Error(`You already have ${MAX_CATEGORIES} expense categories. Use one of them, for example /budget Food 5000 10.`);
+      }
       const { data: newCat, error: createError } = await supabase
         .from('categories')
         .insert({ user_id: userId, name: categoryName, type: 'expense', icon: '💰' })

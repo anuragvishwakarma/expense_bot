@@ -1,4 +1,5 @@
 import { MAX_AMOUNT } from '../utils/limits';
+import { escapeLike } from '../utils/escapeLike';
 import { todayIST } from '../utils/ist';
 import { guessCategory } from '../utils/categorize';
 import { matchCategory } from '../utils/parseBudget';
@@ -84,7 +85,7 @@ export class TransactionService {
         .select('id, name')
         .eq('user_id', userId)
         .eq('type', type)
-        .ilike('name', categoryName)
+        .ilike('name', escapeLike(categoryName))
         .limit(1);
 
       if (matchError) throw matchError;

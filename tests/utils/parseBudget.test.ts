@@ -32,4 +32,17 @@ describe('matchCategory', () => {
     expect(matchCategory(['Eating Out', 'Out of Pocket'], 'out')).toBe('Out of Pocket');
     expect(() => matchCategory(['Pet Food', 'Fast Food'], 'food')).toThrow('several categories');
   });
+  it('does not match in the middle of a word', () => {
+    expect(matchCategory(['Business', 'Airbus Fund'], 'bus')).toBe('Business');
+    expect(matchCategory(['Airbus Fund', 'Rent'], 'bus')).toBeNull();
+    expect(matchCategory(['Transportation'], 'port')).toBeNull();
+  });
+  it('matches at the start of any word, not only the first', () => {
+    expect(matchCategory(['Bills & Utilities'], 'util')).toBe('Bills & Utilities');
+  });
+  it('treats regex characters in the input literally', () => {
+    expect(matchCategory(['Food & Dining'], '.*')).toBeNull();
+    expect(matchCategory(['Rent (home)'], '(home')).toBe('Rent (home)');
+    expect(matchCategory(['Rent home'], '(home')).toBeNull();
+  });
 });

@@ -22,7 +22,7 @@ import { userRateLimit } from './bot/rateLimit';
 import { takePaidCall, PAID_QUOTA_MESSAGE } from './bot/paidQuota';
 import { mdEscape } from './bot/ui';
 import { userMessage } from './utils/userMessage';
-import { clearPending, liveEntry } from './bot/pending';
+import { clearPending, liveEntry, liveBatch } from './bot/pending';
 import { isTransferExpired, readTransferAmount } from './bot/transfer';
 import { todayIST, isRealDate } from './utils/ist';
 import { alertOwner } from './utils/alert';
@@ -357,6 +357,25 @@ const expired = async (ctx: BotContext) => {
   await ctx.editMessageText('That entry expired. Send it again.');
 };
 
+bot.action('nb_save', async (ctx) => {
+  const batch = liveBatch(ctx.session);
+  if (!ctx.session.user || !batch) return expired(ctx);
+  ctx.session.pendingBatch = undefined; // cleared first so a double tap cannot save twice
+  await ctx.answerCbQuery();
+  const userId = ctx.session.user.id;
+  const reply = await saveParsedItems(batch.items, async (amount, description, categoryName, type) => {
+    const transaction = await transactionService.addTransaction(userId, formatForAddTransaction(amount, description), type, undefined, categoryName);
+    return { amount: transaction.amount, categoryName: transaction.category_name ?? null };
+  });
+  await ctx.editMessageText(reply);
+});
+
+bot.action('nb_cancel', async (ctx) => {
+  ctx.session.pendingBatch = undefined;
+  await ctx.answerCbQuery();
+  await ctx.editMessageText('Cancelled. Nothing was saved.');
+});
+
 bot.action('en_save', async (ctx) => {
   const entry = liveEntry(ctx.session);
   if (!ctx.session.user || !entry) return expired(ctx);
@@ -656,19 +675,15 @@ bot.on('text', async (ctx, next) => {
     const items = await parseExpenseText(text, namesOf('expense'), namesOf('income'));
     if (!items) return ctx.reply(PARSE_FAILURE_MESSAGE);
 
-    // Several items: save directly as before. One item: show a confirmation card.
+    // Several items: show them and ask first, since the model's amounts can be misread. One item: a card.
     if (items.length > 1) {
-      const reply = await saveParsedItems(items, async (amount, description, categoryName, type) => {
-        const transaction = await transactionService.addTransaction(
-          userId,
-          formatForAddTransaction(amount, description),
-          type,
-          undefined,
-          categoryName
-        );
-        return { amount: transaction.amount, categoryName: transaction.category_name ?? null };
-      });
-      return ctx.reply(reply);
+      clearPending(ctx.session);
+      ctx.session.pendingBatch = { items, at: Date.now() };
+      const lines = items.map(i => `• ${i.description} — ${i.type === 'income' ? '+' : ''}₹${i.amount.toFixed(2)} (${i.category})`);
+      return ctx.reply(
+        `I found ${items.length} entries:\n${lines.join('\n')}\n\nSave all of them?`,
+        Markup.inlineKeyboard([[Markup.button.callback('✅ Save all', 'nb_save'), Markup.button.callback('✖ Cancel', 'nb_cancel')]])
+      );
     }
 
     const defaultAccount = await accountService.getDefaultAccount(userId);

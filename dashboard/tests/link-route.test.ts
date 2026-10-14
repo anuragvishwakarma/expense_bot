@@ -35,6 +35,26 @@ describe('POST /api/link-telegram', () => {
     expect((await POST(req('12345678', '2.2.2.2'))).status).toBe(401)
   })
 
+  it('refuses cross-site requests before touching anything', async () => {
+    botUser = { id: 'b1', link_code_expires_at: future(), auth_user_id: null }
+    const r = new NextRequest('http://localhost/api/link-telegram', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json', origin: 'https://evil.example', 'x-forwarded-for': '6.6.6.6' },
+      body: JSON.stringify({ code: '12345678' }),
+    })
+    expect((await POST(r)).status).toBe(403)
+    expect(updates).toHaveLength(0)
+  })
+
+  it('answers 400, not 500, for a body that is not JSON', async () => {
+    const r = new NextRequest('http://localhost/api/link-telegram', {
+      method: 'POST',
+      headers: { 'x-forwarded-for': '7.7.7.7' },
+      body: '{bad',
+    })
+    expect((await POST(r)).status).toBe(400)
+  })
+
   it('links an unlinked profile with a valid code', async () => {
     botUser = { id: 'b1', link_code_expires_at: future(), auth_user_id: null }
     const res = await POST(req('12345678', '3.3.3.3'))

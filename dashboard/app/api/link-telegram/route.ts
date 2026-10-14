@@ -28,6 +28,12 @@ function clearAttempts(key: string) {
 }
 
 export async function POST(request: NextRequest) {
+  // A cross-site page must not be able to link this login to someone else's Telegram profile
+  const origin = request.headers.get('origin')
+  if (origin && origin !== request.nextUrl.origin) {
+    return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
+  }
+
   const authUserId = await getUserIdFromRequest()
   if (!authUserId) {
     return NextResponse.json({ error: 'Not signed in' }, { status: 401 })
@@ -42,7 +48,8 @@ export async function POST(request: NextRequest) {
     )
   }
 
-  const { code } = await request.json()
+  const body = await request.json().catch(() => null)
+  const code = body?.code
   if (!code || typeof code !== 'string') {
     return NextResponse.json({ error: 'Missing code' }, { status: 400 })
   }

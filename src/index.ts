@@ -18,6 +18,7 @@ import { startWorker } from './worker';
 import { parseBudgetArgs } from './utils/parseBudget';
 import { BotContext, PendingEntry } from './bot/types';
 import { privateOnly } from './bot/privateOnly';
+import { userRateLimit } from './bot/rateLimit';
 import { todayIST } from './utils/ist';
 import { alertOwner } from './utils/alert';
 import { startHealthServer } from './health';
@@ -68,6 +69,9 @@ bot.use(session({
 
 // Refuse groups and channels before anything else touches user data
 bot.use(privateOnly());
+
+// Cap per-sender traffic before any lookup or paid API call
+bot.use(userRateLimit());
 
 // Start background worker for recurrences and reminders
 startWorker(bot as unknown as Telegraf<Context>);

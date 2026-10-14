@@ -6,6 +6,10 @@ const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL!
 const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
 
 export async function GET(request: NextRequest) {
+  // A GET navigation carries no Origin, but browsers label it: another site's link or image must not sign the user out
+  if (request.headers.get('sec-fetch-site') === 'cross-site') {
+    return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
+  }
   const redirect = NextResponse.redirect(new URL('/login', request.url))
 
   const supabase = createServerClient(supabaseUrl, supabaseAnonKey, {

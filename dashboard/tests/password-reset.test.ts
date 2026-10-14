@@ -35,6 +35,11 @@ const get = (qs: string) => new NextRequest(`http://localhost/auth/callback?${qs
 beforeEach(() => { calls.length = 0; authUser = 'u1'; authError = null; process.env.NEXT_PUBLIC_SITE_URL = 'https://dash.example' })
 
 describe('POST /api/auth/forgot-password', () => {
+  it('refuses a cross-site POST without emailing anyone', async () => {
+    const res = await forgot(post('/api/auth/forgot-password', { email: 'victim@example.com' }, { origin: 'https://evil.example', host: 'localhost', 'x-forwarded-for': '10.0.0.9' }))
+    expect(res.status).toBe(403)
+    expect(calls.find(c => c.fn === 'resetPasswordForEmail')).toBeUndefined()
+  })
   it('asks Supabase to email a link that returns through our callback', async () => {
     const res = await forgot(post('/api/auth/forgot-password', { email: ' Me@Example.com ' }, { 'x-forwarded-for': '10.0.0.1' }))
     expect(res.status).toBe(200)

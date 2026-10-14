@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { createServerClient } from '@supabase/ssr'
 import { createRateLimiter, clientIp } from '@/lib/rateLimit'
 import { AUTH_COOKIE_OPTIONS } from '@/lib/authCookies'
+import { isCrossSite } from '@/lib/sameOrigin'
 
 const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL!
 const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
@@ -14,6 +15,10 @@ const byEmail = createRateLimiter(3, 60 * 60 * 1000)
 const EMAIL = /^[^\s@]+@[^\s@]+\.[^\s@]+$/
 
 export async function POST(request: NextRequest) {
+  // A cross-site page must not be able to spend a victim's reset-email quota
+  if (isCrossSite(request)) {
+    return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
+  }
   const body = await request.json().catch(() => null)
   const email = typeof body?.email === 'string' ? body.email.trim().toLowerCase() : ''
   if (!email || email.length > 254 || !EMAIL.test(email)) {

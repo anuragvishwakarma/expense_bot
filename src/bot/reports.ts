@@ -1,6 +1,6 @@
 import { ReportService } from '../services/reportService';
 import { BudgetService } from '../services/budgetService';
-import { inr, monthLabel, progressBar } from './ui';
+import { inr, mdEscape, monthLabel, progressBar } from './ui';
 
 // Markdown text for /today
 export async function todayMessage(reports: ReportService, userId: string) {
@@ -13,7 +13,7 @@ export async function todayMessage(reports: ReportService, userId: string) {
   if (Object.keys(summary.expenseByCategory).length > 0) {
     message += `*Expenses by Category:*\n`;
     for (const [category, amount] of Object.entries(summary.expenseByCategory)) {
-      message += `• ${category}: ₹${amount.toFixed(2)}\n`;
+      message += `• ${mdEscape(category)}: ₹${amount.toFixed(2)}\n`;
     }
     message += '\n';
   }
@@ -21,7 +21,7 @@ export async function todayMessage(reports: ReportService, userId: string) {
   if (Object.keys(summary.incomeByCategory).length > 0) {
     message += `*Income by Category:*\n`;
     for (const [category, amount] of Object.entries(summary.incomeByCategory)) {
-      message += `• ${category}: ₹${amount.toFixed(2)}\n`;
+      message += `• ${mdEscape(category)}: ₹${amount.toFixed(2)}\n`;
     }
   }
   return message;
@@ -40,7 +40,7 @@ export async function monthlyMessage(reports: ReportService, userId: string, yea
     message += `*Top Expense Categories:*\n`;
     const top = Object.entries(summary.expenseByCategory).sort((a, b) => b[1] - a[1]).slice(0, 5);
     for (const [category, amount] of top) {
-      message += `• ${category}: ₹${amount.toFixed(2)}\n`;
+      message += `• ${mdEscape(category)}: ₹${amount.toFixed(2)}\n`;
     }
     message += '\n';
   }

@@ -4,6 +4,10 @@ import { todayIST } from '../utils/ist';
 export const chunk = <T,>(arr: T[], n: number) =>
   Array.from({ length: Math.ceil(arr.length / n) }, (_, i) => arr.slice(i * n, i * n + n));
 
+// Telegram legacy Markdown: user-chosen text (category names, OCR text) must not open or close
+// bold/italic/code/link entities, or the whole message fails to send ("can't parse entities").
+export const mdEscape = (s: string) => s.replace(/[_*`[\\]/g, '\\$&');
+
 export const inr = (n: number) => `₹${n.toLocaleString('en-IN', { maximumFractionDigits: 2 })}`;
 
 export const progressBar = (pct: number, width = 10) => {

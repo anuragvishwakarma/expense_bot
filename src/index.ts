@@ -19,6 +19,7 @@ import { parseBudgetArgs } from './utils/parseBudget';
 import { BotContext, PendingEntry } from './bot/types';
 import { privateOnly } from './bot/privateOnly';
 import { userRateLimit } from './bot/rateLimit';
+import { mdEscape } from './bot/ui';
 import { todayIST } from './utils/ist';
 import { alertOwner } from './utils/alert';
 import { startHealthServer } from './health';
@@ -1480,7 +1481,7 @@ bot.on('photo', async (ctx) => {
     }
     // Store pending result keyed by user id
     pendingOCR.set(ctx.from.id.toString(), parsed);
-    const preview = `🧾 *OCR Result*\\n\\n*Amount:* ₹${parsed.amount.toFixed(2)}\\n*Description:* ${parsed.description}\\n*Date:* ${parsed.date}\\n\\nSave this expense?`;
+    const preview = `🧾 *OCR Result*\n\n*Amount:* ₹${parsed.amount.toFixed(2)}\n*Description:* ${mdEscape(parsed.description)}\n*Date:* ${parsed.date}\n\nSave this expense?`;
     await ctx.replyWithPhoto({ source: photoBuffer }, {
       caption: preview,
       parse_mode: 'Markdown',

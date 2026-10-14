@@ -11,6 +11,8 @@ const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
 // A stolen session cookie must not be enough to wipe an account, so the password is asked again.
 // Wrong answers are capped per account, or this route would be a password-guessing oracle.
 const wrongPassword = createFailureTracker(5, 15 * 60 * 1000)
+// One check at a time per account: parallel guesses would all pass isBlocked() before any failure is counted
+const checking = new Set<string>()
 
 export async function POST(request: NextRequest) {
   // A cross-site page must not be able to trigger this, even if the browser attaches cookies
@@ -35,6 +37,10 @@ export async function POST(request: NextRequest) {
   if (wrongPassword.isBlocked(authUserId)) {
     return NextResponse.json({ error: 'Too many wrong passwords. Please wait a few minutes and try again.' }, { status: 429 })
   }
+  if (checking.has(authUserId)) {
+    return NextResponse.json({ error: 'Another attempt is in progress. Please try again.' }, { status: 429 })
+  }
+  checking.add(authUserId)
 
   try {
     const service = getServiceSupabase()
@@ -64,5 +70,7 @@ export async function POST(request: NextRequest) {
   } catch (error) {
     console.error('Delete account failed:', error)
     return NextResponse.json({ error: 'Could not delete everything. Please try again.' }, { status: 500 })
+  } finally {
+    checking.delete(authUserId)
   }
 }

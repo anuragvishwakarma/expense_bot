@@ -9,7 +9,7 @@ let signInResult: { error: { status?: number; message: string } | null } = { err
 const signIns: unknown[] = []
 
 jest.mock('@supabase/supabase-js', () => ({
-  createClient: () => ({ auth: { signInWithPassword: async (c: unknown) => { signIns.push(c); return signInResult } } }),
+  createClient: () => ({ auth: { signInWithPassword: async (c: unknown) => { signIns.push(c); await new Promise(r => setTimeout(r, 5)); return signInResult } } }),
 }))
 
 jest.mock('@/lib/auth', () => ({ getUserIdFromRequest: async () => authUser }))
@@ -85,6 +85,15 @@ describe('POST /api/delete-account', () => {
     expect(res.status).toBe(429)
     expect(signIns).toHaveLength(5)
     expect(log).toHaveLength(0)
+  })
+
+  it('cannot be beaten by parallel guesses: only one check runs at a time per account', async () => {
+    authUser = 'auth-race'
+    signInResult = { error: { status: 400, message: 'Invalid login credentials' } }
+    const statuses = (await Promise.all(Array.from({ length: 20 }, () => POST(req(OK))))).map(r => r.status)
+    expect(statuses.filter(s => s === 403)).toHaveLength(1)
+    expect(statuses.filter(s => s === 429)).toHaveLength(19)
+    expect(signIns).toHaveLength(1)
   })
 
   it('does not count provider throttling as a wrong password', async () => {

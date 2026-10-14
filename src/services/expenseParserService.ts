@@ -78,7 +78,8 @@ export async function parseExpenseText(
 
     return items.length > 0 ? items : null;
   } catch (error) {
-    console.error('parseExpenseText error:', error);
+    // message only: an axios error carries the request config, including the OpenRouter bearer header
+    console.error('parseExpenseText error:', error instanceof Error ? error.message : 'unknown');
     return null;
   }
 }

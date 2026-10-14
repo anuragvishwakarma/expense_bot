@@ -63,7 +63,8 @@ export class CurrencyService {
       this.cache.set(cacheKey, { rate, timestamp: now });
       return amount * rate;
     } catch (error) {
-      console.error('Currency conversion error:', error);
+      // message only: fetch errors can carry the request URL, which holds the access_key
+      console.error('Currency conversion error:', error instanceof Error ? error.message : 'unknown');
       throw new Error(CONVERSION_UNAVAILABLE);
     }
   }

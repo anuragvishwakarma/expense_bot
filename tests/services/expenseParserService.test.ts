@@ -126,6 +126,17 @@ describe('parseExpenseText', () => {
     expect(result).toBeNull();
   });
 
+  it('does not log the request config, which holds the OpenRouter bearer key', async () => {
+    const err: any = new Error('Request failed with status code 401');
+    err.config = { headers: { Authorization: 'Bearer secret-key-123' } };
+    mockedAxios.post.mockRejectedValue(err);
+    const spy = jest.spyOn(console, 'error').mockImplementation(() => {});
+    expect(await parseExpenseText('lunch 100', ['Food'])).toBeNull();
+    expect(JSON.stringify(spy.mock.calls)).not.toContain('secret-key-123');
+    expect(JSON.stringify(spy.mock.calls)).toContain('status code 401');
+    spy.mockRestore();
+  });
+
   it('returns null when axios rejects', async () => {
     mockedAxios.post.mockRejectedValue(new Error('network error'));
 

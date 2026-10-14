@@ -23,6 +23,7 @@ import { takePaidCall, PAID_QUOTA_MESSAGE } from './bot/paidQuota';
 import { mdEscape } from './bot/ui';
 import { userMessage } from './utils/userMessage';
 import { downloadLimited } from './utils/download';
+import { checkEnv } from './utils/env';
 import { clearPending, liveEntry, liveBatch } from './bot/pending';
 import { isTransferExpired, readTransferAmount } from './bot/transfer';
 import { todayIST, isRealDate } from './utils/ist';
@@ -40,6 +41,14 @@ import { extractFromOcrText } from './utils/extractFromOcrText';
 import { configureProductionBot } from './production';
 
 dotenv.config();
+
+const envCheck = checkEnv();
+if (envCheck.missing.length > 0) {
+  console.error(`Cannot start: set ${envCheck.missing.join(', ')} in the environment.`);
+  process.exit(1);
+}
+envCheck.notices.forEach(n => console.warn(n));
+
 const ocrService = new OCRService();
 
 const bot = new Telegraf<BotContext>(process.env.TELEGRAM_BOT_TOKEN || '');

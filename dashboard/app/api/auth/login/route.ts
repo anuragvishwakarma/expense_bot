@@ -3,6 +3,7 @@ import { createServerClient } from '@supabase/ssr'
 import { clientIp } from '@/lib/rateLimit'
 import { byPair, byIp, byEmail } from '@/lib/loginThrottle'
 import { AUTH_COOKIE_OPTIONS } from '@/lib/authCookies'
+import { isCrossSite } from '@/lib/sameOrigin'
 
 const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL!
 const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
@@ -12,6 +13,10 @@ const TOO_MANY = 'Too many failed attempts. Please wait a few minutes and try ag
 const SAFE_MESSAGES = new Set(['Invalid login credentials', 'Email not confirmed'])
 
 export async function POST(request: NextRequest) {
+  // Login CSRF: a cross-site form must not be able to sign the visitor into an attacker's account
+  if (isCrossSite(request)) {
+    return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
+  }
   const body = await request.json().catch(() => null)
   const email = typeof body?.email === 'string' ? body.email.trim().toLowerCase() : ''
   const password = typeof body?.password === 'string' ? body.password : ''

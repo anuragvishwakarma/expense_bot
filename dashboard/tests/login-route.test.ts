@@ -22,6 +22,16 @@ const right = () => ({ data: { session: { access_token: 'x' }, user: { id: 'u1',
 beforeEach(() => { signIn = jest.fn(async () => wrong()) })
 
 describe('POST /api/auth/login', () => {
+  it('refuses a cross-site POST before touching Supabase', async () => {
+    const res = await POST(new NextRequest('http://localhost/api/auth/login', {
+      method: 'POST',
+      headers: { 'content-type': 'text/plain', origin: 'https://evil.example', host: 'localhost' },
+      body: JSON.stringify({ email: 'a@b.co', password: 'pw-pw-pw-1' }),
+    }))
+    expect(res.status).toBe(403)
+    expect(signIn).not.toHaveBeenCalled()
+  })
+
   it('signs in with a normalised email and does not echo the user object', async () => {
     signIn.mockResolvedValue(right())
     const res = await login(' Me@Example.com ', 'pw-pw-pw-1')

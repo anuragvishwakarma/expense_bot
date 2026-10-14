@@ -1,11 +1,24 @@
-node_modules
+# The image only needs package files, tsconfig.json and src/. Keep everything else, and every
+# secret file at any depth, out of the build context.
+**/node_modules
 dist
 .git
-.gitignore
-*.log
-.DS_Store
-.env
-.env.*
+.github
+**/.env
+**/.env.*
+dashboard
+supabase
+docs
 tests
+scripts
+user-manual
+brag-output*
+graphify-out
+.claude
+.hermes
+.remember
+.playwright-mcp
+.agents
 *.md
-!README.md
+**/*.log
+.DS_Store

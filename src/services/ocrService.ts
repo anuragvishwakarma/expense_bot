@@ -30,6 +30,9 @@ export class OCRService {
 
       const resp = await axios.post(this.apiUrl, form, {
         headers: form.getHeaders(),
+        timeout: 20_000, // a hung OCR call must not hold the handler
+        maxContentLength: 1024 * 1024,
+        maxBodyLength: 6 * 1024 * 1024,
       });
       if (resp.data && resp.data.ParsedResults && resp.data.ParsedResults.length > 0) {
         const text = resp.data.ParsedResults[0].ParsedText;

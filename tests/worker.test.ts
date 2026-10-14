@@ -86,4 +86,18 @@ describe('worker recurrence processing', () => {
     expect(mockAddTransaction).toHaveBeenNthCalledWith(1, 'user-a', '₹100 EMI', 'expense');
     expect(mockClaimRun).toHaveBeenCalledTimes(2);
   });
+
+  it('skips a tick that fires while the previous one is still running', async () => {
+    let release!: (v: unknown[]) => void;
+    mockGetDueRecurrences.mockReturnValueOnce(new Promise(r => { release = r; }));
+    startWorker({} as any);
+    const first = (global as any).__cronFn();
+    await (global as any).__cronFn(); // overlapping tick returns without doing work
+    expect(mockGetDueRecurrences).toHaveBeenCalledTimes(1);
+    release([]);
+    await first;
+    mockGetDueRecurrences.mockResolvedValueOnce([]);
+    await (global as any).__cronFn(); // and the next one runs normally
+    expect(mockGetDueRecurrences).toHaveBeenCalledTimes(2);
+  });
 });

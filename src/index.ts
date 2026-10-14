@@ -22,6 +22,7 @@ import { userRateLimit } from './bot/rateLimit';
 import { takePaidCall, PAID_QUOTA_MESSAGE } from './bot/paidQuota';
 import { mdEscape } from './bot/ui';
 import { userMessage } from './utils/userMessage';
+import { downloadLimited } from './utils/download';
 import { clearPending, liveEntry, liveBatch } from './bot/pending';
 import { isTransferExpired, readTransferAmount } from './bot/transfer';
 import { todayIST, isRealDate } from './utils/ist';
@@ -1349,6 +1350,7 @@ bot.action('unlink_no', async (ctx) => {
 
 const MAX_VOICE_SECONDS = 60;
 const MAX_VOICE_BYTES = 5 * 1024 * 1024;
+const MAX_PHOTO_BYTES = 5 * 1024 * 1024;
 
 // Voice message handler
 bot.on('voice', async (ctx) => {
@@ -1370,7 +1372,7 @@ bot.on('voice', async (ctx) => {
     const fileLink = await ctx.telegram.getFileLink(fileId);
     // Transcribe the voice
     // Download here so the token-bearing file URL never leaves the bot
-    const audioBuffer = Buffer.from(await (await fetch(fileLink.toString())).arrayBuffer());
+    const audioBuffer = await downloadLimited(fileLink.toString(), MAX_VOICE_BYTES);
     const transcription = await voiceService.transcribeVoice(audioBuffer);
     if (!transcription) {
       return ctx.reply('❌ Could not transcribe the voice message. Please try again or enter manually with /add.');
@@ -1458,7 +1460,8 @@ process.on('unhandledRejection', (reason) => {
 });
 process.on('uncaughtException', async (err) => {
   console.error('Uncaught exception:', err);
-  await alertOwner(bot.telegram, 'Bot crashed', err.message);
+  // Do not let a hanging Telegram call keep a crashed process alive
+  await Promise.race([alertOwner(bot.telegram, 'Bot crashed', err.message), new Promise(r => setTimeout(r, 2000))]);
   process.exit(1);
 });
 
@@ -1498,12 +1501,13 @@ bot.on('photo', async (ctx) => {
   // Get the largest photo
   const photo = ctx.message.photo[ctx.message.photo.length - 1];
   const file_id = photo.file_id;
+  // Refuse before spending a paid call: reported size first, then the real cap while downloading
+  if ((photo.file_size ?? 0) > MAX_PHOTO_BYTES) return ctx.reply('🧾 That photo is too large. Send a smaller one, or type the entry with /add.');
   if (!takePaidCall(ctx.session.user.id)) return ctx.reply(PAID_QUOTA_MESSAGE);
   try {
     const fileLink = await ctx.telegram.getFileLink(file_id);
     // Download here so the token-bearing file URL never leaves the bot
-    const photoRes = await fetch(fileLink.toString());
-    const photoBuffer = Buffer.from(await photoRes.arrayBuffer());
+    const photoBuffer = await downloadLimited(fileLink.toString(), MAX_PHOTO_BYTES);
     const ocrResult = await ocrService.getOCRFromBuffer(photoBuffer);
     if (!ocrResult || !ocrResult.text) {
       return ctx.reply('❌ OCR failed to extract text from the image. Please try a clearer photo or enter manually with /add.');

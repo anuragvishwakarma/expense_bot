@@ -34,9 +34,20 @@ export function startWorker(bot: Telegraf<Context>) {
   const userService = new UserService();
   initSupabase(process.env.SUPABASE_URL || '', process.env.SUPABASE_SERVICE_ROLE_KEY || '');
 
-  // Run every minute
+  // Run every minute. A tick that is still running when the next one fires is skipped, not overlapped.
+  let running = false;
   cron.schedule('* * * * *', async () => {
     markWorkerTick();
+    if (running) return;
+    running = true;
+    try {
+      await runTick();
+    } finally {
+      running = false;
+    }
+  });
+
+  async function runTick() {
     const now = new Date();
 
     // --- Process recurrences ---
@@ -78,37 +89,42 @@ export function startWorker(bot: Telegraf<Context>) {
       for (const { user_id: userId, reminder_time } of reminders ?? []) {
         if (nowTime !== reminder_time.slice(0, 5)) continue;
 
-        // Skip users who already logged something today
-        const { count } = await supabase
-          .from('transactions')
-          .select('id', { count: 'exact', head: true })
-          .eq('user_id', userId)
-          .eq('date', today);
-        if (count) continue;
-
-        const { data: userData, error: userErr } = await supabase
-          .from('users')
-          .select('telegram_id')
-          .eq('id', userId)
-          .single();
-        if (userErr) throw userErr;
-        if (!userData?.telegram_id) continue;
+        // One user's failure (a lookup error, a send error) must not skip everyone after them
         try {
-          await bot.telegram.sendMessage(
-            userData.telegram_id,
-            `⏰ Did you spend anything today? Reply like "500 lunch" to log it.`
-          );
-        } catch (sendErr: any) {
-          console.error(`Failed to send reminder to user ${userId}:`, sendErr);
-          // 403 = user blocked the bot; stop retrying daily
-          if (sendErr?.response?.error_code === 403) {
-            await supabase.from('user_reminders').update({ enabled: false }).eq('user_id', userId);
+          // Skip users who already logged something today
+          const { count } = await supabase
+            .from('transactions')
+            .select('id', { count: 'exact', head: true })
+            .eq('user_id', userId)
+            .eq('date', today);
+          if (count) continue;
+
+          const { data: userData, error: userErr } = await supabase
+            .from('users')
+            .select('telegram_id')
+            .eq('id', userId)
+            .single();
+          if (userErr) throw userErr;
+          if (!userData?.telegram_id) continue;
+          try {
+            await bot.telegram.sendMessage(
+              userData.telegram_id,
+              `⏰ Did you spend anything today? Reply like "500 lunch" to log it.`
+            );
+          } catch (sendErr: any) {
+            console.error(`Failed to send reminder to user ${userId}:`, sendErr);
+            // 403 = user blocked the bot; stop retrying daily
+            if (sendErr?.response?.error_code === 403) {
+              await supabase.from('user_reminders').update({ enabled: false }).eq('user_id', userId);
+            }
           }
+        } catch (userErr) {
+          console.error(`Reminder for user ${userId} failed:`, userErr instanceof Error ? userErr.message : 'unknown');
         }
       }
     } catch (e) {
       console.error('Error processing reminders:', e);
       await alertOwner(bot.telegram, 'Reminder worker error', e instanceof Error ? e.message : 'unknown');
     }
-  });
+  }
 }

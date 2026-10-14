@@ -43,7 +43,7 @@ export class VoiceService {
         audio: { content: audio.toString('base64') },
         config: config,
       };
-      const [response] = await this.speechClient.recognize(request);
+      const [response] = await this.speechClient.recognize(request, { timeout: 30_000 });
       const transcription = (response.results || [])
         .map(result => result.alternatives?.[0]?.transcript || '')
         .filter(Boolean)

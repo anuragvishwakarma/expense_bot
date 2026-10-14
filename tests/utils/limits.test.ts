@@ -37,6 +37,15 @@ describe('assertCronNotTooFrequent', () => {
     expect(() => assertCronNotTooFrequent('*/5 * * * *')).toThrow('at least an hour');
     expect(() => assertCronNotTooFrequent('0,30 * * * *')).toThrow('at least an hour');
   });
+  it('catches a close pair of runs that only shows up after the first gap', () => {
+    // The next run can be 12:30, a day before 12:00, hiding a 30 minute gap from a two-run check
+    expect(() => assertCronNotTooFrequent('0,30 12 * * *')).toThrow('at least an hour');
+    expect(() => assertCronNotTooFrequent('0 9,15 1 * *')).not.toThrow();
+    expect(() => assertCronNotTooFrequent('0 9 * * 1,2')).not.toThrow();
+  });
+  it('still accepts sparse schedules that cannot yield many runs', () => {
+    expect(() => assertCronNotTooFrequent('0 9 29 2 *')).not.toThrow();
+  });
   it('explains an invalid expression', () => {
     expect(() => assertCronNotTooFrequent('not a cron')).toThrow('not valid');
     expect(() => assertCronNotTooFrequent('*')).toThrow('not valid');

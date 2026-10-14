@@ -47,20 +47,22 @@ export function isDue(r: RecurrenceRow, now: Date): boolean {
 
 // A schedule like "* * * * *" would post an entry every minute, around the clock.
 export const MIN_CRON_GAP_MS = 60 * 60 * 1000;
+const CRON_SAMPLE = 60; // upcoming runs checked for the minimum gap
 export function assertCronNotTooFrequent(expression: string) {
   const invalid = new Error('That schedule is not valid. Use five fields, for example "0 9 1 * *" for 9am on the 1st of each month.');
   // cron-parser fills in missing fields, so "*" alone would pass as "every minute"; insist on five
   if (expression.trim().split(/\s+/).length !== 5) throw invalid;
-  let first: Date, second: Date;
+  // Check the gap between many upcoming runs, not just the first two: "0,30 12 * * *" starts a day
+  // apart if the next run happens to be 12:30, yet fires twice every day.
+  const runs: number[] = [];
   try {
     const it = CronExpressionParser.parse(expression, { tz: IST_TZ });
-    first = it.next().toDate();
-    second = it.next().toDate();
+    for (let i = 0; i < CRON_SAMPLE; i++) runs.push(it.next().toDate().getTime());
   } catch {
-    throw invalid;
+    if (runs.length < 2) throw invalid; // a sparse schedule may run out of dates; judge by what we have
   }
-  if (second.getTime() - first.getTime() < MIN_CRON_GAP_MS) {
-    throw new Error('Schedules must be at least an hour apart.');
+  for (let i = 1; i < runs.length; i++) {
+    if (runs[i] - runs[i - 1] < MIN_CRON_GAP_MS) throw new Error('Schedules must be at least an hour apart.');
   }
 }
 

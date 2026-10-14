@@ -138,10 +138,15 @@ export class TransactionService {
 
     if (transError) throw transError;
 
-    // Update account current_balance
+    // Update account current_balance. If it cannot be saved, take the entry back out so the
+    // balance and the entry list never disagree.
     const change = type === 'income' ? amountBase : -amountBase; // income increases balance, expense decreases
-    const newBalance = acc.current_balance + change;
-    await this.accountService.updateAccount(accId, userId, { current_balance: newBalance });
+    try {
+      await this.accountService.adjustBalance(accId, userId, change);
+    } catch (error) {
+      await supabase.from('transactions').delete().eq('id', transaction.id).eq('user_id', userId);
+      throw error;
+    }
 
     return { ...transaction, category_name: resolvedCategoryName };
   }
@@ -225,7 +230,7 @@ export class TransactionService {
   }
 
   // Deletes an entry and reverses its effect on the account balance.
-  // ponytail: delete then balance update are two calls, not atomic.
+  // ponytail: the delete and the balance reversal are two calls; the reversal itself cannot lose a concurrent change.
   async deleteTransaction(userId: string, transactionId: string): Promise<TransactionRow> {
     const supabase = getSupabase();
     const { data: deleted, error } = await supabase
@@ -242,7 +247,7 @@ export class TransactionService {
       const acc = await this.accountService.getAccount(deleted.account_id, userId);
       if (acc) {
         const change = deleted.type === 'income' ? -deleted.amount_base : deleted.amount_base;
-        await this.accountService.updateAccount(acc.id, userId, { current_balance: acc.current_balance + change });
+        await this.accountService.adjustBalance(acc.id, userId, change);
       }
     }
     return deleted;

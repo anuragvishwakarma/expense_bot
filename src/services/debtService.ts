@@ -53,34 +53,37 @@ export class DebtService {
   async settleDebt(debtId: string, userId: string, amount: number): Promise<Debt> {
     checkAmount(amount, 'settlement');
     const supabase = getSupabase();
-    // First, get the current debt to ensure it belongs to the user and calculate new settled amount
-    const { data: debt, error: fetchError } = await supabase
-      .from('debts')
-      .select('*')
-      .eq('id', debtId)
-      .eq('user_id', userId)
-      .single();
+    // Compare-and-set on settled_amount so two quick taps cannot overwrite each other
+    for (let attempt = 0; attempt < 5; attempt++) {
+      const { data: debt, error: fetchError } = await supabase
+        .from('debts')
+        .select('*')
+        .eq('id', debtId)
+        .eq('user_id', userId)
+        .single();
 
-    if (fetchError) throw fetchError;
-    if (!debt) throw new Error('Debt not found or access denied');
+      if (fetchError) throw fetchError;
+      if (!debt) throw new Error('Debt not found or access denied');
 
-    const newSettledAmount = debt.settled_amount + amount;
-    if (newSettledAmount > debt.amount) {
-      throw new Error('Cannot settle more than the debt amount');
+      const newSettledAmount = Math.round((debt.settled_amount + amount) * 100) / 100;
+      if (newSettledAmount > debt.amount) {
+        throw new Error('Cannot settle more than the debt amount');
+      }
+
+      const settled = newSettledAmount >= debt.amount;
+
+      const { data, error } = await supabase
+        .from('debts')
+        .update({ settled_amount: newSettledAmount, settled, updated_at: new Date().toISOString() })
+        .eq('id', debtId)
+        .eq('user_id', userId)
+        .eq('settled_amount', debt.settled_amount)
+        .select();
+
+      if (error) throw error;
+      if (data && data.length > 0) return data[0];
     }
-
-    const settled = newSettledAmount >= debt.amount;
-
-    const { data, error } = await supabase
-      .from('debts')
-      .update({ settled_amount: newSettledAmount, settled, updated_at: new Date().toISOString() })
-      .eq('id', debtId)
-      .eq('user_id', userId)
-      .select()
-      .single();
-
-    if (error) throw error;
-    return data;
+    throw new Error('That debt kept changing while saving. Please try again.');
   }
 
   async deleteDebt(debtId: string, userId: string): Promise<void> {

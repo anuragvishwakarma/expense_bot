@@ -90,18 +90,46 @@ export class AccountService {
     if (error) throw error;
   }
 
-  // ponytail: two sequential updates, not atomic; move to a Postgres function if concurrent transfers matter
+  // Adds delta to a balance without losing a concurrent change: the write only lands if the balance
+  // is still the value we read (compare-and-set), otherwise re-read and retry.
+  // minBalance (e.g. 0 for a debit) makes a debit that would go below it fail before writing.
+  async adjustBalance(accountId: string, userId: string, delta: number, minBalance?: number): Promise<Account> {
+    const supabase = getSupabase();
+    for (let attempt = 0; attempt < 5; attempt++) {
+      const acc = await this.getAccount(accountId, userId);
+      if (!acc) throw new Error('Account not found or access denied');
+      const next = Math.round((acc.current_balance + delta) * 100) / 100;
+      if (minBalance !== undefined && next < minBalance) {
+        throw new Error(`Insufficient balance. Available: ${acc.current_balance.toFixed(2)}`);
+      }
+      const { data, error } = await supabase
+        .from('accounts')
+        .update({ current_balance: next, updated_at: new Date().toISOString() })
+        .eq('id', accountId)
+        .eq('user_id', userId)
+        .eq('current_balance', acc.current_balance)
+        .select();
+      if (error) throw error;
+      if (data && data.length > 0) return data[0];
+    }
+    throw new Error('Your balance kept changing while saving. Please try again.');
+  }
+
+  // ponytail: debit then credit are two writes. A failed credit refunds the debit; only a crash between
+  // the two statements can still leave money in neither account. A Postgres function would close that.
   async transfer(userId: string, fromId: string, toId: string, amount: number): Promise<{ from: Account; to: Account }> {
     if (fromId === toId) throw new Error('Pick two different accounts');
     if (!(amount > 0)) throw new Error('Amount must be positive');
     const from = await this.getAccount(fromId, userId);
     const to = await this.getAccount(toId, userId);
     if (!from || !to) throw new Error('One or both accounts not found');
-    if (from.current_balance < amount) {
-      throw new Error(`Insufficient balance. Available: ${from.current_balance.toFixed(2)}`);
+    await this.adjustBalance(fromId, userId, -amount, 0);
+    try {
+      await this.adjustBalance(toId, userId, amount);
+    } catch (error) {
+      await this.adjustBalance(fromId, userId, amount).catch(e => console.error('Transfer refund failed:', e instanceof Error ? e.message : 'unknown'));
+      throw error;
     }
-    await this.updateAccount(fromId, userId, { current_balance: from.current_balance - amount });
-    await this.updateAccount(toId, userId, { current_balance: to.current_balance + amount });
     return { from, to };
   }
 

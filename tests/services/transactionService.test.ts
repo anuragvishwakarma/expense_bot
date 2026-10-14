@@ -50,6 +50,8 @@ function buildAccountsQuery() {
     order: jest.fn().mockReturnThis(),
     limit: jest.fn().mockReturnThis(),
     update: jest.fn().mockReturnThis(),
+    // adjustBalance awaits update().eq().eq().eq().select() directly (compare-and-set returns the changed rows)
+    then: (resolve: (v: any) => void) => resolve({ data: [{ id: 'acc-1', current_balance: 0 }], error: null }),
     single: jest.fn().mockResolvedValue({
       data: { id: 'acc-1', user_id: 'user-1', current_balance: 0, currency_code: 'INR' },
       error: null

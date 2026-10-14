@@ -46,32 +46,35 @@ export class GoalService {
   async updateProgress(goalId: string, userId: string, amountToAdd: number): Promise<Goal> {
     checkAmount(amountToAdd, 'amount');
     const supabase = getSupabase();
-    // First, get the current goal to ensure it belongs to the user and calculate new saved amount
-    const { data: goal, error: fetchError } = await supabase
-      .from('goals')
-      .select('*')
-      .eq('id', goalId)
-      .eq('user_id', userId)
-      .single();
+    // Compare-and-set on saved_amount so two quick taps cannot overwrite each other
+    for (let attempt = 0; attempt < 5; attempt++) {
+      const { data: goal, error: fetchError } = await supabase
+        .from('goals')
+        .select('*')
+        .eq('id', goalId)
+        .eq('user_id', userId)
+        .single();
 
-    if (fetchError) throw fetchError;
-    if (!goal) throw new Error('Goal not found or access denied');
+      if (fetchError) throw fetchError;
+      if (!goal) throw new Error('Goal not found or access denied');
 
-    const newSavedAmount = goal.saved_amount + amountToAdd;
-    if (newSavedAmount > goal.target_amount) {
-      throw new Error('Cannot exceed target amount');
+      const newSavedAmount = Math.round((goal.saved_amount + amountToAdd) * 100) / 100;
+      if (newSavedAmount > goal.target_amount) {
+        throw new Error('Cannot exceed target amount');
+      }
+
+      const { data, error } = await supabase
+        .from('goals')
+        .update({ saved_amount: newSavedAmount, updated_at: new Date().toISOString() })
+        .eq('id', goalId)
+        .eq('user_id', userId)
+        .eq('saved_amount', goal.saved_amount)
+        .select();
+
+      if (error) throw error;
+      if (data && data.length > 0) return data[0];
     }
-
-    const { data, error } = await supabase
-      .from('goals')
-      .update({ saved_amount: newSavedAmount, updated_at: new Date().toISOString() })
-      .eq('id', goalId)
-      .eq('user_id', userId)
-      .select()
-      .single();
-
-    if (error) throw error;
-    return data;
+    throw new Error('That goal kept changing while saving. Please try again.');
   }
 
   async deleteGoal(goalId: string, userId: string): Promise<void> {

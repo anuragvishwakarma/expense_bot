@@ -91,7 +91,8 @@ export async function POST(request: NextRequest) {
         { status: 409 }
       )
     }
-    return NextResponse.json({ error: updateError.message }, { status: 500 })
+    console.error('Link update failed:', updateError.code)
+    return NextResponse.json({ error: 'Could not link your account. Please try again.' }, { status: 500 })
   }
 
   clearAttempts(authUserId)

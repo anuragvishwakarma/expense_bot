@@ -5,6 +5,7 @@ import { isCrossSite } from '@/lib/sameOrigin'
 import { clearAccountFailures } from '@/lib/loginThrottle'
 import { RESET_COOKIE, verifyResetToken } from '@/lib/resetToken'
 import { AUTH_COOKIE_OPTIONS } from '@/lib/authCookies'
+import { friendlyAuthError } from '@/lib/authErrors'
 
 const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL!
 const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
@@ -45,7 +46,7 @@ export async function POST(request: NextRequest) {
   const { data, error } = await supabase.auth.updateUser({ password })
   if (error) {
     // e.g. "New password should be different from the old password." or a weak-password rule
-    return NextResponse.json({ error: error.message }, { status: 400 })
+    return NextResponse.json({ error: friendlyAuthError(error, 'We could not update the password. Please try again.') }, { status: 400 })
   }
 
   // The owner just proved control of the email: lift any lockout an attacker caused on this account

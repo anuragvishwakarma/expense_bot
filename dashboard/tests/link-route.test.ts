@@ -4,13 +4,14 @@ import { NextRequest } from 'next/server'
 let authUser: string | null = 'auth-a'
 let botUser: any = null
 const updates: any[] = []
+let updateError: any = null
 
 jest.mock('@/lib/auth', () => ({ getUserIdFromRequest: async () => authUser }))
 jest.mock('@/lib/supabase', () => ({
   getServiceSupabase: () => {
     const b: any = {}
     b.select = () => b
-    b.eq = () => (b.__update ? Promise.resolve({ error: null }) : b)
+    b.eq = () => (b.__update ? Promise.resolve({ error: updateError }) : b)
     b.single = () => Promise.resolve(botUser ? { data: botUser, error: null } : { data: null, error: { code: 'PGRST116' } })
     b.update = (payload: any) => { updates.push(payload); b.__update = true; return b }
     return { from: () => b }
@@ -28,7 +29,17 @@ const req = (code: unknown, ip = '1.1.1.1') =>
 const future = () => new Date(Date.now() + 60_000).toISOString()
 
 describe('POST /api/link-telegram', () => {
-  beforeEach(() => { authUser = 'auth-a'; botUser = null; updates.length = 0 })
+  beforeEach(() => { authUser = 'auth-a'; botUser = null; updates.length = 0; updateError = null })
+
+  it('hides database error text when the link update fails', async () => {
+    botUser = { id: 'b1', link_code_expires_at: future(), auth_user_id: null }
+    updateError = { code: 'XX000', message: 'relation "users" secret internals' }
+    const spy = jest.spyOn(console, 'error').mockImplementation(() => {})
+    const res = await POST(req('12345678', '3.3.3.3'))
+    expect(res.status).toBe(500)
+    expect(JSON.stringify(await res.json())).not.toContain('secret internals')
+    spy.mockRestore()
+  })
 
   it('requires a signed-in user', async () => {
     authUser = null

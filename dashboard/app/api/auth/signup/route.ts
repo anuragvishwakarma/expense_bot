@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createServerClient } from '@supabase/ssr'
+import { friendlyAuthError } from '@/lib/authErrors'
 
 const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL!
 const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
@@ -94,7 +95,7 @@ export async function POST(request: NextRequest) {
       if (error.status === 422 || /already registered/i.test(error.message)) {
         return NextResponse.json({ message: CONFIRM_MESSAGE })
       }
-      return NextResponse.json({ error: error.message }, { status: 400 })
+      return NextResponse.json({ error: friendlyAuthError(error, 'We could not create that account. Check your details and try again.') }, { status: 400 })
     }
 
     // Project has email confirmation on, so signUp never returns a usable

@@ -1,7 +1,7 @@
 const eqCalls: [string, unknown][] = [];
 jest.mock('../../src/db', () => ({
   getSupabase: () => {
-    const b: any = { select: () => b, eq: (c: string, v: unknown) => { eqCalls.push([c, v]); return b; }, then: (res: any) => res({ data: [], error: null }) };
+    const b: any = { select: () => b, eq: (c: string, v: unknown) => { eqCalls.push([c, v]); return b; }, order: () => b, range: () => b, then: (res: any) => res({ data: [], error: null, count: 0 }) };
     return { from: () => b };
   },
 }));

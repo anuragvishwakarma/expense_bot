@@ -15,23 +15,45 @@ interface TransactionWithCategory {
   category: Category | null;
 }
 
+// PostgREST silently caps each response at max_rows (1000 on Supabase). Reports and the CSV backup
+// must see every row, so page with .range() until we hold what the exact count promises.
+// ponytail: ceiling below, a user with more rows gets an error rather than a silently short result.
+const PAGE = 1000;
+const MAX_ROWS = 100_000;
+async function fetchAllRows<T>(
+  page: (from: number, to: number) => PromiseLike<{ data: unknown[] | null; error: unknown; count: number | null }>
+): Promise<T[]> {
+  const all: T[] = [];
+  let total = Infinity;
+  while (all.length < total) {
+    const { data, error, count } = await page(all.length, all.length + PAGE - 1);
+    if (error) throw error;
+    if (count != null) total = count;
+    if (!data || data.length === 0) break;
+    all.push(...(data as T[]));
+    if (count == null && data.length < PAGE) break;
+    if (all.length >= MAX_ROWS && all.length < total) {
+      throw new Error('That is too many entries for one report. Try a shorter date range.');
+    }
+  }
+  return all;
+}
+
 export class ReportService {
   async getDailySummary(userId: string, date: string = todayIST()) {
     const supabase = getSupabase();
     
-    const { data, error } = await supabase
+    const transactions = await fetchAllRows<TransactionWithCategory>((from, to) => supabase
       .from('transactions')
       .select(`
         amount,
         type,
         category:categories!inner(name, icon)
-      `)
+      `, { count: 'exact' })
       .eq('user_id', userId)
-      .eq('date', date);
-
-    if (error) throw error;
-
-    const transactions = data as unknown as TransactionWithCategory[];
+      .eq('date', date)
+      .order('id', { ascending: true })
+      .range(from, to));
     const expenses = transactions.filter(t => t.type === 'expense');
     const income = transactions.filter(t => t.type === 'income');
     
@@ -58,7 +80,7 @@ export class ReportService {
       net: totalIncome - totalExpense,
       expenseByCategory,
       incomeByCategory,
-      transactions: data
+      transactions
     };
   }
 
@@ -69,22 +91,20 @@ export class ReportService {
     const lastDay = new Date(year, month, 0).getDate();
     const endDate = `${year}-${month.toString().padStart(2, '0')}-${lastDay.toString().padStart(2, '0')}`;
     
-    const { data, error } = await supabase
+    const transactions = await fetchAllRows<TransactionWithCategory>((from, to) => supabase
       .from('transactions')
       .select(`
         amount,
         type,
         date,
         category:categories!inner(name, icon)
-      `)
+      `, { count: 'exact' })
       .eq('user_id', userId)
       .gte('date', startDate)
       .lte('date', endDate)
-      .order('date', { ascending: true });
-
-    if (error) throw error;
-
-    const transactions = data as unknown as TransactionWithCategory[];
+      .order('date', { ascending: true })
+      .order('id', { ascending: true })
+      .range(from, to));
 
     // Calculate monthly totals
     const expenses = transactions.filter(t => t.type === 'expense');
@@ -138,40 +158,21 @@ export class ReportService {
     }
     const supabase = getSupabase();
 
-    // PostgREST silently caps each response at max_rows (1000 on Supabase), and this file is the
-    // backup people take before /deletemydata, so page until we hold every row the exact count promises.
-    // ponytail: ceiling below, a user with more rows gets an error rather than a silently short file.
-    const PAGE = 1000;
-    const MAX_ROWS = 100_000;
-    const all: TransactionWithCategory[] = [];
-    let total = Infinity;
-    while (all.length < total) {
-      const { data, error, count } = await supabase
-        .from('transactions')
-        .select(`
-          date,
-          amount,
-          type,
-          description,
-          category:categories!inner(name)
-        `, { count: 'exact' })
-        .eq('user_id', userId)
-        .gte('date', startDate)
-        .lte('date', endDate)
-        .order('date', { ascending: true })
-        .order('id', { ascending: true }) // stable order, or rows sharing a date can repeat or vanish across pages
-        .range(all.length, all.length + PAGE - 1);
-      if (error) throw error;
-      if (count != null) total = count;
-      if (!data || data.length === 0) break;
-      all.push(...(data as unknown as TransactionWithCategory[]));
-      if (count == null && data.length < PAGE) break;
-      if (all.length >= MAX_ROWS && all.length < total) {
-        throw new Error('That is too many entries for one file. Export a shorter date range.');
-      }
-    }
-
-    const transactions = all;
+    const transactions = await fetchAllRows<TransactionWithCategory>((from, to) => supabase
+      .from('transactions')
+      .select(`
+        date,
+        amount,
+        type,
+        description,
+        category:categories!inner(name)
+      `, { count: 'exact' })
+      .eq('user_id', userId)
+      .gte('date', startDate)
+      .lte('date', endDate)
+      .order('date', { ascending: true })
+      .order('id', { ascending: true }) // stable order, or rows sharing a date can repeat or vanish across pages
+      .range(from, to));
 
     // Amount is a plain number (not "₹500" text) so sheets can sum it. Text cells are
     // neutralised against spreadsheet formulas by csvCell.

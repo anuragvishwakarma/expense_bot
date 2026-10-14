@@ -138,23 +138,40 @@ export class ReportService {
     }
     const supabase = getSupabase();
 
-    const { data, error } = await supabase
-      .from('transactions')
-      .select(`
-        date,
-        amount,
-        type,
-        description,
-        category:categories!inner(name)
-      `)
-      .eq('user_id', userId)
-      .gte('date', startDate)
-      .lte('date', endDate)
-      .order('date', { ascending: true });
+    // PostgREST silently caps each response at max_rows (1000 on Supabase), and this file is the
+    // backup people take before /deletemydata, so page until we hold every row the exact count promises.
+    // ponytail: ceiling below, a user with more rows gets an error rather than a silently short file.
+    const PAGE = 1000;
+    const MAX_ROWS = 100_000;
+    const all: TransactionWithCategory[] = [];
+    let total = Infinity;
+    while (all.length < total) {
+      const { data, error, count } = await supabase
+        .from('transactions')
+        .select(`
+          date,
+          amount,
+          type,
+          description,
+          category:categories!inner(name)
+        `, { count: 'exact' })
+        .eq('user_id', userId)
+        .gte('date', startDate)
+        .lte('date', endDate)
+        .order('date', { ascending: true })
+        .order('id', { ascending: true }) // stable order, or rows sharing a date can repeat or vanish across pages
+        .range(all.length, all.length + PAGE - 1);
+      if (error) throw error;
+      if (count != null) total = count;
+      if (!data || data.length === 0) break;
+      all.push(...(data as unknown as TransactionWithCategory[]));
+      if (count == null && data.length < PAGE) break;
+      if (all.length >= MAX_ROWS && all.length < total) {
+        throw new Error('That is too many entries for one file. Export a shorter date range.');
+      }
+    }
 
-    if (error) throw error;
-
-    const transactions = data as unknown as TransactionWithCategory[];
+    const transactions = all;
 
     // Amount is a plain number (not "₹500" text) so sheets can sum it. Text cells are
     // neutralised against spreadsheet formulas by csvCell.

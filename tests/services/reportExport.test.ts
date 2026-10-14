@@ -1,9 +1,19 @@
 let rows: any[] = [];
+let maxRows = 1000;
+let exactCount = true;
+const calls: unknown[] = [];
 jest.mock('../../src/db', () => ({
   getSupabase: () => {
     const b: any = {};
+    let range: [number, number] | undefined;
     for (const m of ['select', 'eq', 'gte', 'lte', 'order']) b[m] = () => b;
-    b.then = (res: any) => res({ data: rows, error: null });
+    b.range = (from: number, to: number) => { range = [from, to]; return b; };
+    b.then = (res: any) => {
+      calls.push(range);
+      // Like PostgREST: honour .range() but never return more than the project's max_rows
+      const slice = range ? rows.slice(range[0], Math.min(range[1] + 1, range[0] + maxRows)) : rows;
+      return res({ data: slice, error: null, count: exactCount ? rows.length : null });
+    };
     return { from: () => b };
   },
 }));
@@ -14,7 +24,27 @@ const svc = new ReportService();
 const lines = (csv: string) => csv.replace(/^﻿/, '').split('\n');
 
 describe('exportTransactionsCSV', () => {
-  beforeEach(() => { rows = [tx()]; });
+  beforeEach(() => { rows = [tx()]; maxRows = 1000; exactCount = true; calls.length = 0; });
+
+  it('pages past the server row cap so the backup is complete', async () => {
+    rows = Array.from({ length: 2500 }, (_, i) => tx({ description: `n${i}` }));
+    const out = lines(await svc.exportTransactionsCSV('u1', '2026-10-01', '2026-10-31'));
+    expect(out.length - 1).toBe(2500);
+    expect(out[2500]).toContain('n2499');
+    expect(calls.length).toBe(3);
+  });
+
+  it('keeps paging when the server cap is lower than the page size', async () => {
+    maxRows = 400;
+    rows = Array.from({ length: 1000 }, (_, i) => tx({ description: `n${i}` }));
+    expect(lines(await svc.exportTransactionsCSV('u1', '2026-10-01', '2026-10-31')).length - 1).toBe(1000);
+  });
+
+  it('without a count, keeps going until a short page', async () => {
+    exactCount = false;
+    rows = Array.from({ length: 1500 }, (_, i) => tx({ description: `n${i}` }));
+    expect(lines(await svc.exportTransactionsCSV('u1', '2026-10-01', '2026-10-31')).length - 1).toBe(1500);
+  });
 
   it('starts with a UTF-8 BOM and a clear header', async () => {
     const csv = await svc.exportTransactionsCSV('u1', '2026-10-01', '2026-10-31');

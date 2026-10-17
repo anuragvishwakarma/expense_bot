@@ -27,18 +27,8 @@ test.describe('Expense Tracker Dashboard', () => {
     await expect(page).toHaveTitle('Expense Tracker Dashboard')
   })
 
-  test('sidebar navigation links exist', async ({ page }) => {
+  test('login page has no sidebar links', async ({ page }) => {
     await page.goto('http://localhost:3000/login')
-    const links = await page.locator('nav a').all()
-    expect(links.length).toBe(7)
-
-    const hrefs = await Promise.all(links.map(l => l.getAttribute('href')))
-    expect(hrefs).toContain('/')
-    expect(hrefs).toContain('/transactions')
-    expect(hrefs).toContain('/goals')
-    expect(hrefs).toContain('/debts')
-    expect(hrefs).toContain('/settings')
-    expect(hrefs).toContain('/guide')
-    expect(hrefs).toContain('/logout')
+    await expect(page.locator('nav a')).toHaveCount(0)
   })
 })

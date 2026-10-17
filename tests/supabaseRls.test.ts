@@ -48,6 +48,15 @@ describe('supabase RLS definitions', () => {
     expect(mine.map(p => p.cmd)).toEqual(['SELECT']);
   });
 
+  // M9: the UPDATE policy alone let users edit their own balances; the revoke takes away the privilege
+  it('revokes direct UPDATE on every tenant table from the API roles', () => {
+    const revoke = read('restrict_direct_updates.sql');
+    for (const t of auditTables) {
+      expect(revoke).toMatch(new RegExp(`public\\.${t}\\b`));
+    }
+    expect(revoke).toMatch(/revoke update on[\s\S]*from anon, authenticated/i);
+  });
+
   it('every tenant table has row level security enabled somewhere in the repo', () => {
     const sql = all.map(read).join('\n');
     for (const t of [...auditTables, 'users']) {

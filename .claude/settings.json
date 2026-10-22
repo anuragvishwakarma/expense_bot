@@ -1,0 +1,26 @@
+{
+  "hooks": {
+    "PostToolUse": [
+      {
+        "matcher": "Edit|Write",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "cd '/Users/koki/Library/Mobile Documents/com~apple~CloudDocs/Documents/expense_bot' && npx tsc --noEmit 2>&1 | head -20"
+          }
+        ]
+      }
+    ],
+    "PreToolUse": [
+      {
+        "matcher": "Edit|Write",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "python3 -c \"import sys, json, os; inp = sys.stdin.read(); d = json.loads(inp) if inp.strip() else {}; fp = d.get('file_path', d.get('path', '')); base = os.path.basename(fp); exit(2 if base == '.env' else 0)\" <<< \"$CLAUDE_TOOL_INPUT\" && true || echo 'Blocked: edit .env.example instead, or set values via your shell environment'"
+          }
+        ]
+      }
+    ]
+  }
+}
